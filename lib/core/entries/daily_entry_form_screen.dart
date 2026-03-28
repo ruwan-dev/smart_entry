@@ -76,6 +76,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
     String formattedDate = DateFormat('yyyy MMM dd').format(widget.selectedDate);
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: Text('$formattedDate දින සටහන'),
         backgroundColor: Theme.of(context).primaryColor,

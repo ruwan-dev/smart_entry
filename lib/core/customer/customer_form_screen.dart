@@ -130,6 +130,7 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(title: const Text('පාරිභෝගික ලියාපදිංචිය')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),

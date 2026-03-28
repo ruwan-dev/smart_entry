@@ -118,104 +118,104 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('මාසික ගාස්තු සැකසුම්', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          
-          // Data Entry Form
-          Form(
-            key: _formKey,
-            child: Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: _selectedYear,
-                            decoration: const InputDecoration(labelText: 'වර්ෂය', border: OutlineInputBorder()),
-                            items: _years.map((y) => DropdownMenuItem(value: y, child: Text(y))).toList(),
-                            onChanged: (val) => setState(() => _selectedYear = val!),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: _selectedMonth,
-                            decoration: const InputDecoration(labelText: 'මාසය', border: OutlineInputBorder()),
-                            items: _months.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
-                            onChanged: (val) => setState(() => _selectedMonth = val!),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _teaRateController,
-                            decoration: const InputDecoration(
-                              labelText: 'තේ දළු මිල', 
-                              border: OutlineInputBorder(),
-                              prefixText: 'Rs. ',
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('මාසික ගාස්තු සැකසුම්', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            
+            // Data Entry Form
+            Form(
+              key: _formKey,
+              child: Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedYear,
+                              decoration: const InputDecoration(labelText: 'වර්ෂය', border: OutlineInputBorder()),
+                              items: _years.map((y) => DropdownMenuItem(value: y, child: Text(y))).toList(),
+                              onChanged: (val) => setState(() => _selectedYear = val!),
                             ),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            validator: (val) => val!.isEmpty ? 'මිල ඇතුළත් කරන්න' : null,
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _transportRateController,
-                            decoration: const InputDecoration(
-                              labelText: 'ප්‍රවාහන ගාස්තුව', 
-                              border: OutlineInputBorder(),
-                              prefixText: 'Rs. ',
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedMonth,
+                              decoration: const InputDecoration(labelText: 'මාසය', border: OutlineInputBorder()),
+                              items: _months.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+                              onChanged: (val) => setState(() => _selectedMonth = val!),
                             ),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            validator: (val) => val!.isEmpty ? 'ගාස්තුව ඇතුළත් කරන්න' : null,
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _saveRates,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Theme.of(context).primaryColor,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        child: _isLoading 
-                            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : const Text('ගාස්තු සුරකින්න', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _teaRateController,
+                              decoration: const InputDecoration(
+                                labelText: 'තේ දළු මිල', 
+                                border: OutlineInputBorder(),
+                                prefixText: 'Rs. ',
+                              ),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              validator: (val) => val!.isEmpty ? 'මිල ඇතුළත් කරන්න' : null,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _transportRateController,
+                              decoration: const InputDecoration(
+                                labelText: 'ප්‍රවාහන ගාස්තුව', 
+                                border: OutlineInputBorder(),
+                                prefixText: 'Rs. ',
+                              ),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              validator: (val) => val!.isEmpty ? 'ගාස්තුව ඇතුළත් කරන්න' : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _saveRates,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          child: _isLoading 
+                              ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Text('ගාස්තු සුරකින්න', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 24),
-          
-          const Text('සුරැකි ගාස්තු ලැයිස්තුව', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-
-          // Modern Responsive Table with Delete Option
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
+            const SizedBox(height: 24),
+            
+            const Text('සුරැකි ගාස්තු ලැයිස්තුව', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+  
+            // Modern Responsive Table with Delete Option
+            StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('MonthlyRates')
                   .orderBy('sortValue', descending: true)
@@ -287,8 +287,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               },
             ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
