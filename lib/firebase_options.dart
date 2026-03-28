@@ -73,4 +73,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'smart-entry-app.firebasestorage.app',
     measurementId: 'G-7BCMRJ78JL',
   );
+
 }
