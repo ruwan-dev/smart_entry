@@ -17,10 +17,21 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
   String? _selectedCustomerId;
   String? _selectedCustomerName;
   
+  final TextEditingController _refNumberController = TextEditingController();
   final TextEditingController _grossWeightController = TextEditingController();
   final TextEditingController _deductionController = TextEditingController(text: '0');
   
   bool _isLoading = false;
+  
+  // 1. Stream එක රඳවා තබා ගැනීමට අලුත් විචල්‍යයක් එකතු කිරීම
+  late Stream<QuerySnapshot> _customersStream;
+
+  @override
+  void initState() {
+    super.initState();
+    // 2. තිරය load වන විට එකවරක් පමණක් දත්ත සමුදායට සම්බන්ධ වීම
+    _customersStream = FirebaseFirestore.instance.collection('Customers').orderBy('name').snapshots();
+  }
 
   Future<void> _saveEntry() async {
     if (_formKey.currentState!.validate()) {
@@ -40,7 +51,6 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
         double deductions = double.parse(_deductionController.text.trim());
         double netWeight = grossWeight - deductions;
 
-        // Save to Firebase DailyEntries collection
         await FirebaseFirestore.instance.collection('DailyEntries').add({
           'customerId': _selectedCustomerId,
           'customerName': _selectedCustomerName,
@@ -53,7 +63,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
         });
 
         if (mounted) {
-          Navigator.pop(context); // සාර්ථක වූ පසු පෙර පිටුවට යාම
+          Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('දෛනික සටහන සාර්ථකව සුරකින ලදි!')),
           );
@@ -76,6 +86,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
 
   @override
   void dispose() {
+    _refNumberController.dispose();
     _grossWeightController.dispose();
     _deductionController.dispose();
     super.dispose();
@@ -104,9 +115,9 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Customer Dropdown
+              // Customer Selection (Ref Number + Dropdown)
               StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('Customers').orderBy('name').snapshots(),
+                stream: _customersStream, // 3. අලුතින් සැකසූ Stream විචල්‍යය මෙතැනට ලබාදීම
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const CircularProgressIndicator();
@@ -117,35 +128,84 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                       style: TextStyle(color: Colors.red));
                   }
 
-                  List<DropdownMenuItem<String>> customerItems = snapshot.data!.docs.map((doc) {
+                  var customerDocs = snapshot.data!.docs;
+
+                  List<DropdownMenuItem<String>> customerItems = customerDocs.map((doc) {
+                    String ref = (doc.data() as Map<String, dynamic>).containsKey('refNumber') ? doc['refNumber'] : '';
                     return DropdownMenuItem(
                       value: doc.id,
-                      child: Text(doc['name']),
+                      child: Text('$ref - ${doc['name']}'),
                     );
                   }).toList();
 
-                  return DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(
-                      labelText: 'පාරිභෝගිකයා තෝරන්න',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person),
-                    ),
-                    value: _selectedCustomerId,
-                    items: customerItems,
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedCustomerId = value;
-                        var selectedDoc = snapshot.data!.docs.firstWhere((doc) => doc.id == value);
-                        _selectedCustomerName = selectedDoc['name'];
-                      });
-                    },
-                    validator: (value) => value == null ? 'අත්‍යවශ්‍යයි' : null,
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: _refNumberController,
+                          decoration: const InputDecoration(
+                            labelText: 'අංකය',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.numbers, size: 20),
+                          ),
+                          onChanged: (value) {
+                            String typedRef = value.trim();
+                            
+                            var match = customerDocs.where((doc) {
+                              var data = doc.data() as Map<String, dynamic>;
+                              return data.containsKey('refNumber') && data['refNumber'] == typedRef;
+                            }).toList();
+
+                            if (match.isNotEmpty) {
+                              setState(() {
+                                _selectedCustomerId = match.first.id;
+                                _selectedCustomerName = match.first['name'];
+                              });
+                            } else {
+                              setState(() {
+                                _selectedCustomerId = null;
+                                _selectedCustomerName = null;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      
+                      Expanded(
+                        flex: 3,
+                        child: DropdownButtonFormField<String>(
+                          decoration: const InputDecoration(
+                            labelText: 'පාරිභෝගිකයා',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.person, size: 20),
+                          ),
+                          isExpanded: true,
+                          value: _selectedCustomerId,
+                          items: customerItems,
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedCustomerId = value;
+                              var selectedDoc = customerDocs.firstWhere((doc) => doc.id == value);
+                              _selectedCustomerName = selectedDoc['name'];
+                              
+                              var data = selectedDoc.data() as Map<String, dynamic>;
+                              if (data.containsKey('refNumber')) {
+                                _refNumberController.text = data['refNumber'];
+                              }
+                            });
+                          },
+                          validator: (value) => value == null ? 'අත්‍යවශ්‍යයි' : null,
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
               const SizedBox(height: 20),
               
-              // Gross Weight Field
               TextFormField(
                 controller: _grossWeightController,
                 decoration: const InputDecoration(
@@ -156,18 +216,13 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'කරුණාකර බර ඇතුළත් කරන්න';
-                  }
-                  if (double.tryParse(value) == null) {
-                    return 'නිවැරදි අගයක් ඇතුළත් කරන්න';
-                  }
+                  if (value == null || value.isEmpty) return 'කරුණාකර බර ඇතුළත් කරන්න';
+                  if (double.tryParse(value) == null) return 'නිවැරදි අගයක් ඇතුළත් කරන්න';
                   return null;
                 },
               ),
               const SizedBox(height: 20),
 
-              // Deductions Field
               TextFormField(
                 controller: _deductionController,
                 decoration: const InputDecoration(
@@ -179,18 +234,13 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'අගයක් ඇතුළත් කරන්න (නැත්නම් 0 යොදන්න)';
-                  }
-                  if (double.tryParse(value) == null) {
-                    return 'නිවැරදි අගයක් ඇතුළත් කරන්න';
-                  }
+                  if (value == null || value.isEmpty) return 'අගයක් ඇතුළත් කරන්න (නැත්නම් 0 යොදන්න)';
+                  if (double.tryParse(value) == null) return 'නිවැරදි අගයක් ඇතුළත් කරන්න';
                   return null;
                 },
               ),
               const SizedBox(height: 40),
 
-              // Save Button
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -199,13 +249,11 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Theme.of(context).primaryColor,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8.0),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
                   ),
                   child: _isLoading 
                       ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('දත්ත සුරකින්න', style: TextStyle(fontSize: 18)),
+                      : const Text('දත්ත සුරකින්න', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
