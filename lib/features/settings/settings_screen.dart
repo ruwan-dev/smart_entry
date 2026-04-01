@@ -69,9 +69,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // දත්ත මකා දැමීමේ ක්‍රියාවලිය
   Future<void> _deleteRate(String docId) async {
-    // මකා දැමීමට පෙර තහවුරු කිරීමක් ලබා ගැනීම
     bool confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -118,8 +116,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Padding(
+    // Keyboard Bug fix එක සඳහා මුළු screen එකම GestureDetector එකකින් wrap කර ඇත
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -214,7 +214,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const Text('සුරැකි ගාස්තු ලැයිස්තුව', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
   
-            // Modern Responsive Table with Delete Option
+            // StreamBuilder සහ Table එක ඇතුළත් කොටස
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('MonthlyRates')
@@ -228,65 +228,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   return const Center(child: Text('දැනට කිසිදු ගාස්තුවක් ඇතුළත් කර නොමැත.'));
                 }
 
-                return SingleChildScrollView(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12.0),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.grey.withOpacity(0.15),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    clipBehavior: Clip.antiAlias, 
-                    child: Table(
-                      columnWidths: const {
-                        0: FlexColumnWidth(2.2), // මාසය
-                        1: FlexColumnWidth(1.5), // තේ දළු
-                        2: FlexColumnWidth(1.5), // ප්‍රවාහනය
-                        3: FlexColumnWidth(1.0), // මකා දැමීමේ බොත්තම (Delete)
-                      },
-                      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                      border: TableBorder(
-                        horizontalInside: BorderSide(color: Colors.grey.shade200, width: 1),
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12.0),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.15),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
                       ),
-                      children: [
-                        // Table Header
-                        TableRow(
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).primaryColor.withOpacity(0.1),
-                          ),
-                          children: [
-                            _buildTableHeader('මාසය'),
-                            _buildTableHeader('තේ දළු\n(Rs)'),
-                            _buildTableHeader('ප්‍රවාහනය\n(Rs)'),
-                            _buildTableHeader(''), // Delete column header (හිස්ව තබා ඇත)
-                          ],
-                        ),
-                        // Table Data Rows
-                        ...snapshot.data!.docs.map((doc) {
-                          return TableRow(
-                            children: [
-                              _buildTableCell('${doc['year']}\n${doc['month']}', isBold: true),
-                              _buildTableCell(doc['teaRate'].toStringAsFixed(2)),
-                              _buildTableCell(doc['transportRate'].toStringAsFixed(2)),
-                              // Delete Button Cell
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                onPressed: () => _deleteRate(doc.id),
-                              ),
-                            ],
-                          );
-                        }).toList(),
-                      ],
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias, 
+                  child: Table(
+                    columnWidths: const {
+                      0: FlexColumnWidth(2.2),
+                      1: FlexColumnWidth(1.5),
+                      2: FlexColumnWidth(1.5),
+                      3: FlexColumnWidth(1.0),
+                    },
+                    defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                    border: TableBorder(
+                      horizontalInside: BorderSide(color: Colors.grey.shade200, width: 1),
                     ),
+                    children: [
+                      TableRow(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).primaryColor.withOpacity(0.1),
+                        ),
+                        children: [
+                          _buildTableHeader('මාසය'),
+                          _buildTableHeader('තේ දළු\n(Rs)'),
+                          _buildTableHeader('ප්‍රවාහනය\n(Rs)'),
+                          _buildTableHeader(''),
+                        ],
+                      ),
+                      ...snapshot.data!.docs.map((doc) {
+                        return TableRow(
+                          children: [
+                            _buildTableCell('${doc['year']}\n${doc['month']}', isBold: true),
+                            _buildTableCell(doc['teaRate'].toStringAsFixed(2)),
+                            _buildTableCell(doc['transportRate'].toStringAsFixed(2)),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.red),
+                              onPressed: () => _deleteRate(doc.id),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ],
                   ),
                 );
               },
-            ),
             ),
           ],
         ),
@@ -294,7 +288,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Helper widget for Table Headers
   Widget _buildTableHeader(String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0),
@@ -310,7 +303,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Helper widget for Table Cells
   Widget _buildTableCell(String text, {bool isBold = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0),
