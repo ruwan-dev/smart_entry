@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:smart_entry/core/entries/daily_entries_screen.dart';
+import '../billing/monthly_bill_screen.dart';
 
 class CustomerFormScreen extends StatefulWidget {
   const CustomerFormScreen({super.key});
@@ -20,7 +21,6 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
   bool _isLoading = false;
   String _searchQuery = '';
 
-  // පාරිභෝගිකයා සුරැකීමේ Function එක
   Future<void> _saveCustomer() async {
     if (_formKey.currentState!.validate()) {
       setState(() { _isLoading = true; });
@@ -65,7 +65,6 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
             const SnackBar(content: Text('පාරිභෝගිකයා සාර්ථකව සුරකින ලදී')),
           );
 
-          // සුරැකූ පසු Daily Tiles screen එකට Redirect වීම
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -86,7 +85,6 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
     }
   }
 
-  // පාරිභෝගිකයා ඉවත් කිරීමේ (Delete) Function එක
   Future<void> _deleteCustomer(String docId, String name) async {
     bool confirm = await showDialog(
       context: context,
@@ -203,8 +201,10 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 
                 var filteredDocs = snapshot.data!.docs.where((doc) {
-                  String name = (doc['name'] ?? '').toString().toLowerCase();
-                  String ref = (doc['refNumber'] ?? '').toString().toLowerCase();
+                  // ආරක්ෂිතව Data ලබාගැනීම (Crash වීම වැළැක්වීමට)
+                  var data = doc.data() as Map<String, dynamic>; 
+                  String name = (data['name'] ?? '').toString().toLowerCase();
+                  String ref = (data['refNumber'] ?? '').toString().toLowerCase();
                   return name.contains(_searchQuery) || ref.contains(_searchQuery);
                 }).toList();
 
@@ -217,9 +217,9 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                   child: Table(
                     columnWidths: const {
                       0: FlexColumnWidth(1.0),
-                      1: FlexColumnWidth(2.2),
+                      1: FlexColumnWidth(2.0),
                       2: FlexColumnWidth(1.6),
-                      3: FlexColumnWidth(1.8), // Actions column එක සඳහා ඉඩ
+                      3: FlexColumnWidth(2.2),
                     },
                     defaultVerticalAlignment: TableCellVerticalAlignment.middle,
                     border: TableBorder(horizontalInside: BorderSide(color: Colors.grey.shade200)),
@@ -233,38 +233,65 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                           _buildHeader('ක්‍රියා'),
                         ],
                       ),
-                      ...filteredDocs.map((doc) => TableRow(
-                        children: [
-                          _buildCell(doc['refNumber'] ?? ''),
-                          _buildCell(doc['name'] ?? ''),
-                          _buildCell(doc['phone'] ?? ''),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // Daily Tiles Screen එකට යන Button එක
-                              IconButton(
-                                icon: const Icon(Icons.add_chart, color: Colors.green, size: 22),
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => DailyEntriesScreen(
-                                        initialCustomerId: doc.id,
-                                        initialRefNumber: doc['refNumber'] ?? '',
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                              // Delete Button එක
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
-                                onPressed: () => _deleteCustomer(doc.id, doc['name']),
-                              ),
-                            ],
-                          ),
-                        ],
-                      )),
+                      ...filteredDocs.map((doc) {
+                        // ආරක්ෂිතව Data ලබාගැනීම (Crash වීම වැළැක්වීමට)
+                        var data = doc.data() as Map<String, dynamic>; 
+                        
+                        return TableRow(
+                          children: [
+                            _buildCell(data['refNumber'] ?? ''),
+                            _buildCell(data['name'] ?? ''),
+                            _buildCell(data['phone'] ?? ''),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: IconButton(
+                                    padding: EdgeInsets.zero,
+                                    icon: const Icon(Icons.add_chart, color: Colors.green, size: 20),
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => DailyEntriesScreen(
+                                            initialCustomerId: doc.id,
+                                            initialRefNumber: data['refNumber'] ?? '',
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                Expanded(
+                                  child: IconButton(
+                                    padding: EdgeInsets.zero,
+                                    icon: const Icon(Icons.receipt_long, color: Colors.blue, size: 20),
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => MonthlyBillScreen(
+                                            customerId: doc.id,
+                                            customerName: data['name'] ?? '',
+                                            refNumber: data['refNumber'] ?? '',
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                Expanded(
+                                  child: IconButton(
+                                    padding: EdgeInsets.zero,
+                                    icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                    onPressed: () => _deleteCustomer(doc.id, data['name'] ?? ''),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        );
+                      }),
                     ],
                   ),
                 );

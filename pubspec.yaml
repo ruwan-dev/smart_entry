@@ -37,6 +37,8 @@ dependencies:
   firebase_core: ^4.6.0
   cloud_firestore: ^6.2.0
   intl: ^0.20.2
+  pdf: ^3.10.8
+  printing: ^5.11.1
 
 dev_dependencies:
   flutter_test:
@@ -60,6 +62,13 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - assets/fonts/Iskoola Pota Regular.ttf
+
+  fonts:
+    - family: SinhalaFont
+      fonts:
+        - asset: assets/fonts/Iskoola Pota Regular.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -91,3 +100,4 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+

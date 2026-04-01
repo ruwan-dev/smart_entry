@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/entries/daily_entry_form_screen.dart';
+import '../billing/monthly_bill_screen.dart';
+import 'customer_form_screen.dart'; 
 
 class CustomerListScreen extends StatelessWidget {
   const CustomerListScreen({super.key});
@@ -51,6 +53,18 @@ class CustomerListScreen extends StatelessWidget {
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
       ),
+      
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const CustomerFormScreen()),
+          );
+        },
+        backgroundColor: Theme.of(context).primaryColor,
+        child: const Icon(Icons.person_add, color: Colors.white),
+      ),
+
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('Customers').orderBy('name').snapshots(),
         builder: (context, snapshot) {
@@ -66,6 +80,10 @@ class CustomerListScreen extends StatelessWidget {
             itemCount: snapshot.data!.docs.length,
             itemBuilder: (context, index) {
               var doc = snapshot.data!.docs[index];
+              
+              // ආරක්ෂිතව Data ලබාගැනීම (Crash වීම වැළැක්වීමට)
+              var data = doc.data() as Map<String, dynamic>; 
+
               return Card(
                 elevation: 2,
                 margin: const EdgeInsets.symmetric(vertical: 8),
@@ -74,7 +92,7 @@ class CustomerListScreen extends StatelessWidget {
                   leading: CircleAvatar(
                     backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
                     child: Text(
-                      doc['refNumber'] ?? '',
+                      data['refNumber'] ?? '', // ආරක්ෂිතයි
                       style: TextStyle(
                         color: Theme.of(context).primaryColor, 
                         fontSize: 12, 
@@ -82,31 +100,70 @@ class CustomerListScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  title: Text(doc['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('${doc['phone']}\n${doc['address']}'),
+                  title: Text(data['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text('${data['phone'] ?? ''}\n${data['address'] ?? ''}'),
                   isThreeLine: true,
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.add_chart, color: Colors.green),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => DailyEntryFormScreen(
-                                selectedDate: DateTime.now(),
-                                customerId: doc.id,
-                                customerName: doc['name'],
-                                refNumber: doc['refNumber'] ?? '',
-                              ),
+                  
+                  trailing: PopupMenuButton<int>(
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (value) {
+                      if (value == 0) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => DailyEntryFormScreen(
+                              selectedDate: DateTime.now(),
+                              customerId: doc.id,
+                              customerName: data['name'] ?? '',
+                              refNumber: data['refNumber'] ?? '',
                             ),
-                          );
-                        },
+                          ),
+                        );
+                      } else if (value == 1) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => MonthlyBillScreen(
+                              customerId: doc.id,
+                              customerName: data['name'] ?? '',
+                              refNumber: data['refNumber'] ?? '',
+                            ),
+                          ),
+                        );
+                      } else if (value == 2) {
+                        _deleteCustomer(context, doc.id, data['name'] ?? '');
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 0,
+                        child: Row(
+                          children: [
+                            Icon(Icons.add_chart, color: Colors.green),
+                            SizedBox(width: 8),
+                            Text('දෛනික සටහන'),
+                          ],
+                        ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.red),
-                        onPressed: () => _deleteCustomer(context, doc.id, doc['name']),
+                      const PopupMenuItem(
+                        value: 1,
+                        child: Row(
+                          children: [
+                            Icon(Icons.receipt_long, color: Colors.blue),
+                            SizedBox(width: 8),
+                            Text('මාසික බිල්පත'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 2,
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete_outline, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('මකා දමන්න'),
+                          ],
+                        ),
                       ),
                     ],
                   ),
