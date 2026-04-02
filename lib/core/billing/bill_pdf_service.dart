@@ -11,14 +11,21 @@ class BillPdfService {
   }) async {
     final pdf = pw.Document();
     
-    // බිලට අදාළ මාසය ලබා ගැනීම (උදා: MARCH 2026)
+    // Web එකේදී fonts ප්‍රශ්නය ඇති නොවන්නට Google Fonts load කරගනිමු
+    final font = await PdfGoogleFonts.robotoRegular();
+    final fontBold = await PdfGoogleFonts.robotoBold();
+
     String monthDisplay = bill['displayMonth'].toString().toUpperCase();
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
-        // --- Header Section ---
+        // අලුත් font එක theme එකට ලබාදීම
+        theme: pw.ThemeData.withFont(
+          base: font,
+          bold: fontBold,
+        ),
         header: (pw.Context context) => pw.Column(children: [
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -40,7 +47,6 @@ class BillPdfService {
           pw.SizedBox(height: 10),
           pw.Divider(thickness: 1),
           pw.SizedBox(height: 8),
-          // --- මෙතනට පාරිභෝගික විස්තර සහ Unit Rate එක ඇතුළත් කළා ---
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
@@ -50,7 +56,6 @@ class BillPdfService {
           ),
           pw.SizedBox(height: 8),
         ]),
-        // --- Footer Section ---
         footer: (pw.Context context) => pw.Column(children: [
           pw.Divider(thickness: 0.5, color: PdfColors.grey400),
           pw.Row(
@@ -62,9 +67,6 @@ class BillPdfService {
           ),
         ]),
         build: (pw.Context context) => [
-          // සටහන: පාරිභෝගික විස්තර Header එකට ගත් නිසා මෙතනින් ඉවත් කළා.
-          
-          // --- Main Integrated Table ---
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey400),
             defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
@@ -108,12 +110,10 @@ class BillPdfService {
           
           pw.SizedBox(height: 30),
 
-          // --- Summary & Seal Section (Side by Side) ---
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
-              // 1. වම් පැත්තේ සීල් එක (Seal on Left)
               pw.Padding(
                 padding: const pw.EdgeInsets.only(left: 20, bottom: 10),
                 child: bill['netPayable'] < 0
@@ -121,7 +121,6 @@ class BillPdfService {
                     : _buildStamp('PAID\n$monthDisplay', PdfColors.green700),
               ),
 
-              // 2. දකුණු පැත්තේ Summary එක (Summary on Right)
               pw.SizedBox(
                 width: 220,
                 child: pw.Column(children: [
@@ -145,13 +144,17 @@ class BillPdfService {
         ],
       ),
     );
-    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
+
+    // Web එකේදී print කිරීමට නම් මේ විදිහට භාවිතා කරන්න
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+      name: '${refNumber}_Invoice_${bill['displayMonth']}.pdf',
+    );
   }
 
-  // Stamp (සීල්) එක සාදන Method එක
   static pw.Widget _buildStamp(String label, PdfColor color) {
     return pw.Transform.rotate(
-      angle: -0.15, // මදක් ඇලවූ පෙනුමක්
+      angle: -0.15,
       child: pw.Container(
         padding: const pw.EdgeInsets.symmetric(horizontal: 15, vertical: 8),
         decoration: pw.BoxDecoration(
@@ -171,7 +174,6 @@ class BillPdfService {
     );
   }
 
-  // PDF Cell Helpers
   static pw.Widget _pdfCell(String txt, {bool b = false}) => pw.Padding(
       padding: const pw.EdgeInsets.all(5),
       child: pw.Text(txt, textAlign: pw.TextAlign.center, style: pw.TextStyle(fontSize: 9, fontWeight: b ? pw.FontWeight.bold : pw.FontWeight.normal)));
