@@ -64,13 +64,37 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
     }
   }
 
+  // අවම වශයෙන් එක field එකක් හෝ පුරවා ඇත්දැයි බැලීමට අලුත් Validation එක
+  String? _validateInput(String? value) {
+    bool isAllEmpty = _grossWeightController.text.trim().isEmpty &&
+        (_deductionController.text.trim().isEmpty || _deductionController.text.trim() == '0') &&
+        _advanceController.text.trim().isEmpty &&
+        _fertilizer1Controller.text.trim().isEmpty &&
+        _fertilizer2Controller.text.trim().isEmpty &&
+        _teaPacket1Controller.text.trim().isEmpty &&
+        _teaPacket2Controller.text.trim().isEmpty;
+
+    if (isAllEmpty) {
+      return 'අවශ්‍ය වේ';
+    }
+
+    // දත්තයක් ඇතුළත් කර ඇත්නම් එය නිවැරදි අංකයක් දැයි පරීක්ෂා කිරීම
+    if (value != null && value.trim().isNotEmpty && value.trim() != '0') {
+      if (double.tryParse(value.trim()) == null) {
+        return 'නිවැරදි අගයක් ඇතුළත් කරන්න';
+      }
+    }
+    return null;
+  }
+
   Future<void> _saveEntry() async {
     if (_formKey.currentState!.validate()) {
       setState(() { _isLoading = true; });
 
       try {
-        double grossWeight = double.parse(_grossWeightController.text.trim());
-        double deductions = double.parse(_deductionController.text.trim());
+        // හිස්ව ඇති විට හෝ වැරදි අගයක් ඇති විට 0.0 ලෙස ගනී
+        double grossWeight = double.tryParse(_grossWeightController.text.trim()) ?? 0.0;
+        double deductions = double.tryParse(_deductionController.text.trim()) ?? 0.0;
         double netWeight = grossWeight - deductions;
 
         double advance = double.tryParse(_advanceController.text.trim()) ?? 0.0;
@@ -192,11 +216,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                       suffixText: 'Kg',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) return 'කරුණාකර බර ඇතුළත් කරන්න';
-                      if (double.tryParse(value) == null) return 'නිවැරදි අගයක් ඇතුළත් කරන්න';
-                      return null;
-                    },
+                    validator: _validateInput, // යාවත්කාලීන කරන ලදී
                   ),
                   const SizedBox(height: 20),
 
@@ -210,11 +230,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                       suffixText: 'Kg',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) return 'අගයක් ඇතුළත් කරන්න (නැත්නම් 0 යොදන්න)';
-                      if (double.tryParse(value) == null) return 'නිවැරදි අගයක් ඇතුළත් කරන්න';
-                      return null;
-                    },
+                    validator: _validateInput, // යාවත්කාලීන කරන ලදී
                   ),
                   
                   const Padding(
@@ -235,6 +251,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                       prefixText: 'Rs. ',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    validator: _validateInput, // යාවත්කාලීන කරන ලදී
                   ),
                   const SizedBox(height: 20),
 
@@ -251,6 +268,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                             prefixIcon: const Icon(Icons.eco),
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: _validateInput, // යාවත්කාලීන කරන ලදී
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -264,6 +282,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                             prefixIcon: const Icon(Icons.eco),
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: _validateInput, // යාවත්කාලීන කරන ලදී
                         ),
                       ),
                     ],
@@ -283,6 +302,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                             prefixIcon: const Icon(Icons.local_cafe),
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: _validateInput, // යාවත්කාලීන කරන ලදී
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -296,6 +316,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                             prefixIcon: const Icon(Icons.local_cafe),
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: _validateInput, // යාවත්කාලීන කරන ලදී
                         ),
                       ),
                     ],
