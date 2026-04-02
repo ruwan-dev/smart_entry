@@ -3,7 +3,6 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:smart_entry/core/entries/daily_entry_form_screen.dart'; 
 
-
 class DailyEntriesScreen extends StatefulWidget {
   final String? initialCustomerId;
   final String? initialRefNumber;
@@ -23,7 +22,6 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
   @override
   void initState() {
     super.initState();
-    // පිටතින් දත්ත ලැබී ඇත්නම් ඒවා Controller එකට සහ Variable එකට ඇතුළත් කිරීම
     if (widget.initialCustomerId != null) {
       _selectedCustomerId = widget.initialCustomerId;
       _refController.text = widget.initialRefNumber ?? '';
@@ -50,7 +48,6 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
       return;
     }
 
-    // තෝරාගත් පාරිභෝගිකයාගේ සම්පූර්ණ දත්ත ලබා ගැනීම
     var customer = _allCustomers.firstWhere((c) => c.id == _selectedCustomerId);
     
     Navigator.push(
@@ -143,41 +140,83 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                   .where('date', isLessThanOrEqualTo: '$monthPrefix-31')
                   .snapshots(),
               builder: (context, snapshot) {
-                Map<int, double> totals = {};
+                
+                Map<int, Map<String, double>> totals = {};
+                
                 if (snapshot.hasData && _selectedCustomerId != null) {
                   for (var doc in snapshot.data!.docs) {
                     if (doc['customerId'] == _selectedCustomerId) {
                       try {
                         int day = int.parse(doc['date'].split('-')[2]);
-                        totals[day] = (totals[day] ?? 0) + (doc['netWeight'] ?? 0);
-                      } catch (e) { /* දෝෂ පාලනය */ }
+                        
+                        if (!totals.containsKey(day)) {
+                          totals[day] = {'weight': 0.0, 'advance': 0.0, 'fert': 0.0, 'tea': 0.0};
+                        }
+                        
+                        totals[day]!['weight'] = totals[day]!['weight']! + (doc['netWeight'] ?? 0).toDouble();
+                        totals[day]!['advance'] = totals[day]!['advance']! + (doc['advanceAmount'] ?? 0).toDouble();
+                        
+                        double f1 = (doc['fertilizer1Qty'] ?? 0).toDouble();
+                        double f2 = (doc['fertilizer2Qty'] ?? 0).toDouble();
+                        totals[day]!['fert'] = totals[day]!['fert']! + f1 + f2;
+                        
+                        double t1 = (doc['teaPacket1Qty'] ?? 0).toDouble();
+                        double t2 = (doc['teaPacket2Qty'] ?? 0).toDouble();
+                        totals[day]!['tea'] = totals[day]!['tea']! + t1 + t2;
+                        
+                      } catch (e) { }
                     }
                   }
                 }
 
                 return GridView.builder(
-                  padding: const EdgeInsets.all(12.0),
+                  padding: const EdgeInsets.all(8.0),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 7, crossAxisSpacing: 8, mainAxisSpacing: 10, childAspectRatio: 0.75,
+                    crossAxisCount: 7, 
+                    crossAxisSpacing: 4, 
+                    mainAxisSpacing: 6, 
+                    childAspectRatio: 0.55, 
                   ),
                   itemCount: DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0).day,
                   itemBuilder: (context, index) {
                     int day = index + 1;
-                    double weight = totals[day] ?? 0;
+                    
+                    var dayData = totals[day] ?? {'weight': 0.0, 'advance': 0.0, 'fert': 0.0, 'tea': 0.0};
+                    double weight = dayData['weight']!;
+                    double advance = dayData['advance']!;
+                    double fert = dayData['fert']!;
+                    double tea = dayData['tea']!;
+                    
+                    bool hasData = weight > 0 || advance > 0 || fert > 0 || tea > 0;
+
                     return InkWell(
                       onTap: () => _onDateTapped(day),
                       child: Container(
+                        padding: const EdgeInsets.all(2.0),
                         decoration: BoxDecoration(
-                          color: weight > 0 ? Theme.of(context).primaryColor.withOpacity(0.1) : Colors.white,
+                          color: hasData ? Theme.of(context).primaryColor.withOpacity(0.08) : Colors.white,
                           borderRadius: BorderRadius.circular(8.0),
-                          border: Border.all(color: weight > 0 ? Theme.of(context).primaryColor : Colors.grey.shade300),
+                          border: Border.all(color: hasData ? Theme.of(context).primaryColor : Colors.grey.shade300),
                         ),
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisAlignment: MainAxisAlignment.start,
                           children: [
-                            Text(day.toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
-                            if (weight > 0)
-                              FittedBox(child: Text('${weight.toStringAsFixed(1)} kg', style: const TextStyle(fontSize: 10))),
+                            const SizedBox(height: 2),
+                            Text(day.toString(), style: TextStyle(fontWeight: FontWeight.bold, color: hasData ? Colors.black87 : Colors.grey)),
+                            const Spacer(),
+                            
+                            // දත්ත තීරු (Columns) දෙකකට align කර පෙන්වීම
+                            if (weight > 0) 
+                              _buildAlignedRow(Icons.eco, Colors.green, weight.toStringAsFixed(1)),
+                            if (advance > 0) 
+                              _buildAlignedRow(Icons.money, Colors.blue, NumberFormat.compact().format(advance)),
+                            if (fert > 0) 
+                              // පොහොර සඳහා වඩාත් සුරක්ෂිත අයිකනයක් භාවිතා කිරීම
+                              _buildAlignedRow(Icons.eco, const Color.fromARGB(255, 60, 6, 6), fert.toStringAsFixed(0)), 
+                            if (tea > 0) 
+                              _buildAlignedRow(Icons.local_cafe, Colors.orange, tea.toStringAsFixed(0)),
+                              
+                            const SizedBox(height: 2),
                           ],
                         ),
                       ),
@@ -185,6 +224,34 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                   },
                 );
               },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // අයිකන් එක සහ අගය තීරු දෙකකට වෙන්කර (Align කර) පෙන්වන Function එක
+  Widget _buildAlignedRow(IconData icon, Color color, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2.0),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 4,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Icon(icon, size: 12, color: color),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            flex: 6,
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.left,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],

@@ -85,14 +85,17 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
     }
   }
 
-  Future<void> _deleteCustomer(String docId, String name) async {
+  Future<void> _deleteCustomer(BuildContext context, String docId, String name) async {
     bool confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('පාරිභෝගිකයා ඉවත් කරන්නද?'),
-        content: Text('ඔබ ස්ථිරවම $name පද්ධතියෙන් ඉවත් කිරීමට අවශ්‍යද?'),
+        content: Text('ඔබ ස්ථිරවම $name සහ ඔහුට/ඇයට අදාළ සියලුම තේ දළු හා අත්තිකාරම් සටහන් පද්ධතියෙන් ඉවත් කිරීමට අවශ්‍යද?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('නැත')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('නැත'),
+          ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -103,14 +106,48 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
     ) ?? false;
 
     if (confirm) {
+      // Deletion progress එකක් පෙන්වීමට
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
       try {
+        // 1. පාරිභෝගිකයාට අදාළ සියලුම Daily Entries (දෛනික සටහන්) ලබාගැනීම
+        var entriesSnapshot = await FirebaseFirestore.instance
+            .collection('DailyEntries')
+            .where('customerId', isEqualTo: docId)
+            .get();
+
+        // 2. ලබාගත් සියලුම දෛනික සටහන් එකින් එක මකා දැමීම (Batch delete)
+        WriteBatch batch = FirebaseFirestore.instance.batch();
+        for (var doc in entriesSnapshot.docs) {
+          batch.delete(doc.reference);
+        }
+        await batch.commit(); // එකවර සියල්ල මකා දමයි
+
+        // 3. අවසානයේ පාරිභෝගිකයාව මකා දැමීම
         await FirebaseFirestore.instance.collection('Customers').doc(docId).delete();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('සාර්ථකව ඉවත් කරන ලදී')));
+
+        if (context.mounted) {
+          Navigator.pop(context); // Progress circle එක වැසීම
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('පාරිභෝගිකයා සහ අදාළ සියලුම සටහන් සාර්ථකව ඉවත් කරන ලදී'),
+              backgroundColor: Colors.green,
+            ),
+          );
         }
       } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('දෝෂයකි: $e')));
+        if (context.mounted) {
+          Navigator.pop(context); // Progress circle එක වැසීම
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('දෝෂයකි: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
     }
@@ -284,7 +321,7 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                                   child: IconButton(
                                     padding: EdgeInsets.zero,
                                     icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                                    onPressed: () => _deleteCustomer(doc.id, data['name'] ?? ''),
+                                    onPressed: () => _deleteCustomer(context, doc.id, data['name'] ?? ''),
                                   ),
                                 ),
                               ],
