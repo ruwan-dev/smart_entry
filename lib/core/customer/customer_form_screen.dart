@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:smart_entry/core/entries/daily_entries_screen.dart';
 import '../billing/monthly_bill_screen.dart';
@@ -65,7 +66,8 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
             const SnackBar(content: Text('පාරිභෝගිකයා සාර්ථකව සුරකින ලදී')),
           );
 
-          Navigator.pushReplacement(
+          // මෙතන තමයි වෙනස් කළේ (pushReplacement වෙනුවට push පාවිච්චි කළා)
+          Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => DailyEntriesScreen(
@@ -106,7 +108,6 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
     ) ?? false;
 
     if (confirm) {
-      // Deletion progress එකක් පෙන්වීමට
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -114,24 +115,21 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
       );
 
       try {
-        // 1. පාරිභෝගිකයාට අදාළ සියලුම Daily Entries (දෛනික සටහන්) ලබාගැනීම
         var entriesSnapshot = await FirebaseFirestore.instance
             .collection('DailyEntries')
             .where('customerId', isEqualTo: docId)
             .get();
 
-        // 2. ලබාගත් සියලුම දෛනික සටහන් එකින් එක මකා දැමීම (Batch delete)
         WriteBatch batch = FirebaseFirestore.instance.batch();
         for (var doc in entriesSnapshot.docs) {
           batch.delete(doc.reference);
         }
-        await batch.commit(); // එකවර සියල්ල මකා දමයි
+        await batch.commit(); 
 
-        // 3. අවසානයේ පාරිභෝගිකයාව මකා දැමීම
         await FirebaseFirestore.instance.collection('Customers').doc(docId).delete();
 
         if (context.mounted) {
-          Navigator.pop(context); // Progress circle එක වැසීම
+          Navigator.pop(context); 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('පාරිභෝගිකයා සහ අදාළ සියලුම සටහන් සාර්ථකව ඉවත් කරන ලදී'),
@@ -141,7 +139,7 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
         }
       } catch (e) {
         if (context.mounted) {
-          Navigator.pop(context); // Progress circle එක වැසීම
+          Navigator.pop(context); 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('දෝෂයකි: $e'),
@@ -182,6 +180,8 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                   TextFormField(
                     controller: _refNumberController,
                     decoration: const InputDecoration(labelText: 'යොමු අංකය (Reference Number)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.numbers)),
+                    keyboardType: TextInputType.number, 
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly], 
                     validator: (value) => value == null || value.isEmpty ? 'අවශ්‍ය වේ' : null,
                   ),
                   const SizedBox(height: 16),
@@ -200,7 +200,8 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                   TextFormField(
                     controller: _phoneController,
                     decoration: const InputDecoration(labelText: 'දුරකථන අංකය', border: OutlineInputBorder(), prefixIcon: Icon(Icons.phone)),
-                    keyboardType: TextInputType.phone,
+                    keyboardType: TextInputType.number, 
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly], 
                     validator: (value) => value == null || value.isEmpty ? 'අවශ්‍ය වේ' : null,
                   ),
                   const SizedBox(height: 24),
@@ -238,7 +239,6 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 
                 var filteredDocs = snapshot.data!.docs.where((doc) {
-                  // ආරක්ෂිතව Data ලබාගැනීම (Crash වීම වැළැක්වීමට)
                   var data = doc.data() as Map<String, dynamic>; 
                   String name = (data['name'] ?? '').toString().toLowerCase();
                   String ref = (data['refNumber'] ?? '').toString().toLowerCase();
@@ -271,7 +271,6 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                         ],
                       ),
                       ...filteredDocs.map((doc) {
-                        // ආරක්ෂිතව Data ලබාගැනීම (Crash වීම වැළැක්වීමට)
                         var data = doc.data() as Map<String, dynamic>; 
                         
                         return TableRow(

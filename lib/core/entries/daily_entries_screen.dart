@@ -68,6 +68,10 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
     String monthName = DateFormat('MMMM yyyy').format(_selectedMonth);
     String monthPrefix = DateFormat('yyyy-MM').format(_selectedMonth);
 
+    // අද දවස ලබා ගැනීම (වෙලාව නැතිව, දවස පමණක් සලකා බැලීම සඳහා)
+    DateTime now = DateTime.now();
+    DateTime today = DateTime(now.year, now.month, now.day);
+
     return Scaffold(
       appBar: AppBar(title: const Text('දෛනික සටහන්')),
       body: Column(
@@ -189,29 +193,49 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                     
                     bool hasData = weight > 0 || advance > 0 || fert > 0 || tea > 0;
 
+                    // --- අනාගත දින පරීක්ෂාව (Future Date Check) ---
+                    DateTime cellDate = DateTime(_selectedMonth.year, _selectedMonth.month, day);
+                    bool isFuture = cellDate.isAfter(today);
+
                     return InkWell(
-                      onTap: () => _onDateTapped(day),
+                      // අනාගත දවසක් නම් onTap එක null කර click කිරීම වළක්වයි
+                      onTap: isFuture ? null : () => _onDateTapped(day),
                       child: Container(
                         padding: const EdgeInsets.all(2.0),
                         decoration: BoxDecoration(
-                          color: hasData ? Theme.of(context).primaryColor.withOpacity(0.08) : Colors.white,
+                          // අනාගත දවසක් නම් ළා අළු පාටක් ලබා දෙයි (Disabled look)
+                          color: isFuture 
+                              ? Colors.grey.shade200 
+                              : (hasData ? Theme.of(context).primaryColor.withOpacity(0.08) : Colors.white),
                           borderRadius: BorderRadius.circular(8.0),
-                          border: Border.all(color: hasData ? Theme.of(context).primaryColor : Colors.grey.shade300),
+                          border: Border.all(
+                            color: isFuture 
+                                ? Colors.grey.shade300 
+                                : (hasData ? Theme.of(context).primaryColor : Colors.grey.shade300)
+                          ),
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.start,
                           children: [
                             const SizedBox(height: 2),
-                            Text(day.toString(), style: TextStyle(fontWeight: FontWeight.bold, color: hasData ? Colors.black87 : Colors.grey)),
+                            // අනාගත දවසක් නම් අකුරුත් අළු පාට කරයි
+                            Text(
+                              day.toString(), 
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold, 
+                                color: isFuture 
+                                    ? Colors.grey.shade400 
+                                    : (hasData ? Colors.black87 : Colors.grey)
+                              )
+                            ),
                             const Spacer(),
                             
-                            // දත්ත තීරු (Columns) දෙකකට align කර පෙන්වීම
+                            // දත්ත තීරු (Columns) දෙකකට align කර පෙන්වීම (අනාගත දවස් වලට මේවා කොහොමත් 0 නිසා පේන්නේ නෑ)
                             if (weight > 0) 
                               _buildAlignedRow(Icons.eco, Colors.green, weight.toStringAsFixed(1)),
                             if (advance > 0) 
                               _buildAlignedRow(Icons.money, Colors.blue, NumberFormat.compact().format(advance)),
                             if (fert > 0) 
-                              // පොහොර සඳහා වඩාත් සුරක්ෂිත අයිකනයක් භාවිතා කිරීම
                               _buildAlignedRow(Icons.eco, const Color.fromARGB(255, 60, 6, 6), fert.toStringAsFixed(0)), 
                             if (tea > 0) 
                               _buildAlignedRow(Icons.local_cafe, Colors.orange, tea.toStringAsFixed(0)),
