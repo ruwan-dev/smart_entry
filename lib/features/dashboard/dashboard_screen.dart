@@ -51,7 +51,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.eco, color: Colors.green, size: 28), 
+            icon: Icon(Icons.dashboard, color: Colors.green, size: 28), 
             label: 'Overview',
           ),
           BottomNavigationBarItem(

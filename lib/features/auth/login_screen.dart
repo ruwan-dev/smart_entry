@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Firestore import කරන්න
 import '../dashboard/dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -11,25 +12,69 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   
-  // Set your default password here
-  final String _correctPassword = "123"; 
+  // Hardcoded password එක ඉවත් කළා.
+  // final String _correctPassword = "123"; 
   
   bool _isPasswordVisible = false;
+  bool _isLoading = false; // Loading තත්ත්වය පරීක්ෂා කිරීමට
 
-  void _login() {
-    if (_passwordController.text == _correctPassword) {
-      // Navigate to Dashboard and remove Login Screen from backstack
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const DashboardScreen()),
-      );
-    } else {
+  // Firestore වෙතින් මුරපදය පරීක්ෂා කරන අලුත් login function එක
+  Future<void> _login() async {
+    String inputPassword = _passwordController.text.trim();
+
+    if (inputPassword.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('මුරපදය වැරදියි! කරුණාකර නැවත උත්සාහ කරන්න.'),
-          backgroundColor: Colors.red,
-        ),
+        const SnackBar(content: Text('කරුණාකර මුරපදය ඇතුළත් කරන්න.')),
       );
+      return;
+    }
+
+    setState(() { _isLoading = true; }); // Loading ආරම්භය
+
+    try {
+      // Firestore වෙතින් මුරපදය ලබා ගැනීම
+      DocumentSnapshot adminDoc = await FirebaseFirestore.instance
+          .collection('GlobalSettings')
+          .doc('auth')
+          .get();
+
+      if (!adminDoc.exists) {
+        // ජාල දෝෂයක් හෝ document එක නැතිනම්
+        throw Exception("මුරපද දත්ත සොයාගත නොහැකි විය. (Database error)");
+      }
+
+      String dbPassword = adminDoc.get('password').toString();
+
+      if (inputPassword == dbPassword) {
+        // Navigate to Dashboard and remove Login Screen from backstack
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const DashboardScreen()),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('මුරපදය වැරදියි! කරුණාකර නැවත උත්සාහ කරන්න.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          _passwordController.clear(); // input එක clear කිරීම
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('දෝෂයක් ඇති විය: $e'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) { setState(() { _isLoading = false; }); } // Loading අවසන්
     }
   }
 
@@ -41,8 +86,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Loading අවස්ථාවේදී පෙන්වන UI එක
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text("මුරපදය පරීක්ෂා කරමින්...", style: TextStyle(color: Colors.grey),)
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true, // keyboard එක ආවම scroll වෙන්න ඉඩ දෙන්න
       backgroundColor: Theme.of(context).primaryColor.withOpacity(0.05),
       body: Center(
         child: SingleChildScrollView(
@@ -72,7 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'කරුණාකර මුරපදය ඇතුළත් කරන්න',
+                    'කරුණාකර පරිපාලක මුරපදය ඇතුළත් කරන්න',
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                   const SizedBox(height: 32),

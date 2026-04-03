@@ -33,10 +33,10 @@ class BillPdfService {
             children: [
               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
                 pw.Text('NALEEN SURANGA', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
-                pw.Text('Tea Purchasing & Suppliers', style: const pw.TextStyle(fontSize: 9)),
+                pw.Text('Authorized green tea leaf dealers', style: const pw.TextStyle(fontSize: 9)),
                 pw.SizedBox(height: 5),
-                pw.Text('Address: No 123, Tea Garden Road, Your City', style: const pw.TextStyle(fontSize: 8)),
-                pw.Text('Phone: +94 71 234 5678 / +94 77 987 6543', style: const pw.TextStyle(fontSize: 8)),
+                pw.Text('Address: Gangoda,Rakwana', style: const pw.TextStyle(fontSize: 8)),
+                pw.Text('Phone: 0758258544', style: const pw.TextStyle(fontSize: 8)),
               ]),
               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
                 pw.Text('MONTHLY INVOICE', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),

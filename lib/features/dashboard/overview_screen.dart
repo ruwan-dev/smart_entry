@@ -350,11 +350,11 @@ class _OverviewScreenState extends State<OverviewScreen> {
         _summaryCard(title: 'මුළු දළු', value: '${weightF.format(_totalWeight)} Kg', icon: Icons.eco, color: Colors.green),
         _summaryCard(title: 'අත්තිකාරම්', value: 'Rs. ${currencyF.format(_totalAdvance)}', icon: Icons.payments, color: Colors.blue),
         _summaryCard(
-          title: 'පොහොර', value: weightF.format(_totalFertilizer1 + _totalFertilizer2), icon: Icons.science, color: Colors.brown,
-          subItems: [ _buildSubItemIcon(Icons.eco, weightF.format(_totalFertilizer1), Colors.red), _buildSubItemIcon(Icons.eco, weightF.format(_totalFertilizer2), Colors.blue) ]
+          title: 'පොහොර', value: weightF.format(_totalFertilizer1 + _totalFertilizer2), icon: Icons.compost, color: const Color.fromARGB(255, 1, 64, 3),
+          subItems: [ _buildSubItemIcon(Icons.compost, weightF.format(_totalFertilizer1), Colors.red), _buildSubItemIcon(Icons.compost, weightF.format(_totalFertilizer2), Colors.blue) ]
         ),
         _summaryCard(
-          title: 'තේ පැකට්', value: weightF.format(_totalTeaPacket1 + _totalTeaPacket2), icon: Icons.shopping_bag, color: Colors.orange,
+          title: 'තේ පැකට්', value: weightF.format(_totalTeaPacket1 + _totalTeaPacket2), icon: Icons.local_cafe, color: Colors.orange,
           subItems: [ _buildSubItemIcon(Icons.local_cafe, weightF.format(_totalTeaPacket1), Colors.red), _buildSubItemIcon(Icons.local_cafe, weightF.format(_totalTeaPacket2), Colors.blue) ]
         ),
       ],
@@ -387,7 +387,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
   }
 
   Widget _buildTopArrearsList(NumberFormat currencyF) {
-    if (_topArrears.isEmpty) return const Center(child: Text('සියලු දෙනාගේ හිඟ මුදල් පියවා ඇත 🎉', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)));
+    if (_topArrears.isEmpty) return const Center(child: Text('සියලු දෙනාගේ හිඟ මුදල් පියවා ඇත', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)));
     return Column(
       children: _topArrears.map((a) => Card(
         margin: const EdgeInsets.only(bottom: 8), 

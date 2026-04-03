@@ -112,7 +112,7 @@ msix_config:
   publisher_display_name: Ruwan Pathirana
   identity_name: com.ruwan.smartentry
   msix_version: 1.0.0.0
-  #logo_path: assets/logo.png
+  logo_path: assets/logo.png
 flutter_native_splash:
   color: "#000000" # මුල් ස්ක්‍රීන් එක සම්පූර්ණයෙන්ම කළු කරයි
   android: true

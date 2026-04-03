@@ -119,10 +119,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final pdf = pw.Document();
       
       double totalWeight = 0, totalAdvance = 0;
-      
       double totalF1Qty = 0, totalF2Qty = 0;
       double totalT1Qty = 0, totalT2Qty = 0;
-      
       double totalFertValue = 0, totalTeaValue = 0;
       double grandTotalDeductions = 0;
 
@@ -240,6 +238,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(24), 
+          // Footer එක මෙතැනින් එකතු කරන ලදී
+          footer: (pw.Context context) {
+            return pw.Container(
+              alignment: pw.Alignment.centerRight,
+              margin: const pw.EdgeInsets.only(top: 10),
+              child: pw.Text(
+                'Powered by OrbitView Innovations',
+                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+              ),
+            );
+          },
           build: (pw.Context context) {
             return [
               pw.Header(
@@ -291,7 +300,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       if (showAdvance)
                         _buildSummaryRow('Total Advances Issued:', 'Rs. ${NumberFormat('#,##0.00').format(totalAdvance)}'),
                       
-                      // මෙතන අර අවුල් ගිය අයිකන් එක (Bullet point) වෙනුවට සාමාන්‍ය ඉරක් (-) දැම්මා
                       if (showFertilizer) ...[
                         pw.SizedBox(height: 4),
                         pw.Text('Fertilizer Breakdown:', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.green700)),

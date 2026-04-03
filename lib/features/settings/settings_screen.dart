@@ -9,6 +9,16 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  // --- නව මුරපද Controllers ---
+  final _passwordFormKey = GlobalKey<FormState>();
+  final TextEditingController _currentPasswordController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+  bool _isLoadingPassword = false;
+  bool _obscureCurrent = true;
+  bool _obscureNew = true;
+
+
   // මාසික ගාස්තු සඳහා Controllers
   final _monthlyFormKey = GlobalKey<FormState>();
   final TextEditingController _teaRateController = TextEditingController();
@@ -62,6 +72,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Ignore error initially
     }
   }
+
+  // --- 🔥 නව කාර්යය: මුරපදය වෙනස් කිරීමේ Logic එක ---
+  Future<void> _changePassword() async {
+    if (_passwordFormKey.currentState!.validate()) {
+      setState(() { _isLoadingPassword = true; });
+      
+      String currentInput = _currentPasswordController.text.trim();
+      String newInput = _newPasswordController.text.trim();
+
+      try {
+        // 1. Database එකේ ඇති වත්මන් මුරපදය ලබා ගැනීම
+        DocumentSnapshot authDoc = await FirebaseFirestore.instance
+            .collection('GlobalSettings')
+            .doc('auth')
+            .get();
+
+        if (!authDoc.exists) {
+          // පළමු වතාවට හදනවා නම් (document එක නැත්නම්) කෙලින්ම update කරන්න ඉඩ දිය හැක.
+          // නමුත් ආරක්ෂාව සඳහා මෙතනදී "123" වැනි default එකක් Firestore එකට manually දමා තිබීම සුදුසුය.
+          throw Exception("මුරපද දත්ත සොයාගත නොහැක.");
+        }
+
+        String dbPassword = authDoc.get('password').toString();
+
+        // 2. පරිශීලකයා ගැසූ 'වත්මන් මුරපදය' නිවැරදිදැයි බැලීම
+        if (currentInput != dbPassword) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('වත්මන් මුරපදය වැරදියි!'),
+              backgroundColor: Colors.red,
+            ));
+          }
+          setState(() { _isLoadingPassword = false; });
+          return; // එතනින් නවත්වන්න
+        }
+
+        // 3. අලුත් මුරපදය Database එකේ Update කිරීම
+        await FirebaseFirestore.instance
+            .collection('GlobalSettings')
+            .doc('auth')
+            .set({
+          'password': newInput,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // Controllers clear කිරීම
+        _currentPasswordController.clear();
+        _newPasswordController.clear();
+        _confirmPasswordController.clear();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('මුරපදය සාර්ථකව යාවත්කාලීන විය!'),
+            backgroundColor: Colors.green,
+          ));
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('දෝෂයක්: $e')));
+      } finally {
+        if (mounted) setState(() { _isLoadingPassword = false; });
+      }
+    }
+  }
+
 
   // --- මාසික ගාස්තු සුරැකීම ---
   Future<void> _saveMonthlyRates() async {
@@ -148,6 +222,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    // නව controllers dispose කිරීම
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+
     _teaRateController.dispose();
     _transportRateController.dispose();
     _fert1PriceController.dispose();
@@ -166,6 +245,83 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+
+            // ============================================
+            // 🔥 අලුත් කොටස: පරිපාලක මුරපදය වෙනස් කිරීම
+            // ============================================
+            const Text('පරිපාලක මුරපදය වෙනස් කිරීම', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.redAccent)),
+            const SizedBox(height: 12),
+            Form(
+              key: _passwordFormKey,
+              child: Card(
+                elevation: 3,
+                color: Colors.red.withOpacity(0.03),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.red.withOpacity(0.1))),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      // වත්මන් මුරපදය
+                      TextFormField(
+                        controller: _currentPasswordController,
+                        obscureText: _obscureCurrent,
+                        decoration: InputDecoration(
+                          labelText: 'වත්මන් මුරපදය', 
+                          border: const OutlineInputBorder(), 
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(icon: Icon(_obscureCurrent ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _obscureCurrent = !_obscureCurrent))
+                        ),
+                        validator: (val) => val!.isEmpty ? 'වත්මන් මුරපදය ඇතුළත් කරන්න' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      // අලුත් මුරපදය
+                      TextFormField(
+                        controller: _newPasswordController,
+                        obscureText: _obscureNew,
+                        decoration: InputDecoration(
+                            labelText: 'අලුත් මුරපදය',
+                            border: const OutlineInputBorder(),
+                            prefixIcon: const Icon(Icons.lock_reset),
+                            suffixIcon: IconButton(icon: Icon(_obscureNew ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _obscureNew = !_obscureNew))
+                        ),
+                        validator: (val) {
+                          if (val!.isEmpty) return 'අලුත් මුරපදයක් ඇතුළත් කරන්න';
+                          if (val.length < 3) return 'අවම වශයෙන් අකුරු/ඉලක්කම් 3ක් ඕනෑ';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      // අලුත් මුරපදය තහවුරු කිරීම
+                      TextFormField(
+                        controller: _confirmPasswordController,
+                        obscureText: _obscureNew, // use same eye icon state
+                        decoration: const InputDecoration(labelText: 'අලුත් මුරපදය තහවුරු කරන්න', border: OutlineInputBorder(), prefixIcon: Icon(Icons.check_circle_outline)),
+                        validator: (val) {
+                          if (val!.isEmpty) return 'මුරපදය තහවුරු කරන්න';
+                          if (val != _newPasswordController.text) return 'මුරපද එකිනෙකට නොගැලපේ';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton(
+                          onPressed: _isLoadingPassword ? null : _changePassword,
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                          child: _isLoadingPassword 
+                              ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Text('මුරපදය යාවත්කාලීන කරන්න', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 16),
             
             // ============================================
             // කොටස 01: ස්ථිර භාණ්ඩ මිල ගණන් (Global Settings)
