@@ -193,17 +193,16 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                     
                     bool hasData = weight > 0 || advance > 0 || fert > 0 || tea > 0;
 
-                    // --- අනාගත දින පරීක්ෂාව (Future Date Check) ---
+                    // --- අනාගත දින පරීක්ෂාව ---
                     DateTime cellDate = DateTime(_selectedMonth.year, _selectedMonth.month, day);
                     bool isFuture = cellDate.isAfter(today);
 
                     return InkWell(
-                      // අනාගත දවසක් නම් onTap එක null කර click කිරීම වළක්වයි
+                      // මෙතැනින් existingEntryId යැවීම ඉවත් කර ඇත
                       onTap: isFuture ? null : () => _onDateTapped(day),
                       child: Container(
                         padding: const EdgeInsets.all(2.0),
                         decoration: BoxDecoration(
-                          // අනාගත දවසක් නම් ළා අළු පාටක් ලබා දෙයි (Disabled look)
                           color: isFuture 
                               ? Colors.grey.shade200 
                               : (hasData ? Theme.of(context).primaryColor.withOpacity(0.08) : Colors.white),
@@ -218,7 +217,6 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                           mainAxisAlignment: MainAxisAlignment.start,
                           children: [
                             const SizedBox(height: 2),
-                            // අනාගත දවසක් නම් අකුරුත් අළු පාට කරයි
                             Text(
                               day.toString(), 
                               style: TextStyle(
@@ -230,7 +228,6 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                             ),
                             const Spacer(),
                             
-                            // දත්ත තීරු (Columns) දෙකකට align කර පෙන්වීම (අනාගත දවස් වලට මේවා කොහොමත් 0 නිසා පේන්නේ නෑ)
                             if (weight > 0) 
                               _buildAlignedRow(Icons.eco, Colors.green, weight.toStringAsFixed(1)),
                             if (advance > 0) 
@@ -255,7 +252,6 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
     );
   }
 
-  // අයිකන් එක සහ අගය තීරු දෙකකට වෙන්කර (Align කර) පෙන්වන Function එක
   Widget _buildAlignedRow(IconData icon, Color color, String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 2.0),

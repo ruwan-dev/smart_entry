@@ -23,6 +23,9 @@ class DailyEntryFormScreen extends StatefulWidget {
 class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
   final _formKey = GlobalKey<FormState>();
   
+  // Local Variable to store ID for updating
+  String? _existingEntryId;
+  
   // Controllers
   final TextEditingController _grossWeightController = TextEditingController();
   final TextEditingController _deductionController = TextEditingController(text: '0');
@@ -34,7 +37,6 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
   
   bool _isLoading = false;
 
-  // Settings වල ඇති මිල ගණන් ගබඩා කරගැනීමට Variables
   double _fert1Price = 0.0;
   double _fert2Price = 0.0;
   double _teaPkt1Price = 0.0;
@@ -43,10 +45,63 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchGlobalPrices(); // ආරම්භයේදීම මිල ගණන් ලබා ගනී
+    _fetchGlobalPrices(); 
+    _fetchExistingEntry(); // Fetch directly from database on load
   }
 
-  // Firestore හි GlobalSettings වලින් මිල ගණන් ලබාගැනීම
+  // කලින් ඇතුළත් කළ දත්ත ඇත්නම් Database එකෙන් සෘජුවම ලබාගැනීම
+  Future<void> _fetchExistingEntry() async {
+    try {
+      String formattedDate = DateFormat('yyyy-MM-dd').format(widget.selectedDate);
+      
+      QuerySnapshot query = await FirebaseFirestore.instance
+          .collection('DailyEntries')
+          .where('customerId', isEqualTo: widget.customerId)
+          .where('date', isEqualTo: formattedDate)
+          .limit(1)
+          .get();
+
+      if (query.docs.isNotEmpty && mounted) {
+        var doc = query.docs.first;
+        var data = doc.data() as Map<String, dynamic>;
+        
+        setState(() {
+          _existingEntryId = doc.id; // අනාගත Update කිරීම් සඳහා ID එක save කරගැනීම
+          
+          _grossWeightController.text = _formatValue(data['grossWeight']);
+          _deductionController.text = _formatValue(data['deductions'], isDeduction: true);
+          _advanceController.text = _formatValue(data['advanceAmount']);
+          _fertilizer1Controller.text = _formatValue(data['fertilizer1Qty']);
+          _fertilizer2Controller.text = _formatValue(data['fertilizer2Qty']);
+          _teaPacket1Controller.text = _formatValue(data['teaPacket1Qty']);
+          _teaPacket2Controller.text = _formatValue(data['teaPacket2Qty']);
+        });
+      }
+    } catch (e) {
+      debugPrint("දත්ත ලබාගැනීමේදී දෝෂයක්: $e");
+    }
+  }
+
+  // දත්ත වර්ගය (String හෝ Number) කුමක් වුවත් නිවැරදිව කියවීම සඳහා යාවත්කාලීන කර ඇත
+  String _formatValue(dynamic val, {bool isDeduction = false}) {
+    if (val == null) return isDeduction ? '0' : '';
+    
+    double parsedValue = 0.0;
+    
+    if (val is String) {
+      parsedValue = double.tryParse(val.trim()) ?? 0.0;
+    } else if (val is num) {
+      parsedValue = val.toDouble();
+    }
+    
+    if (parsedValue == 0) return isDeduction ? '0' : '';
+    
+    if (parsedValue == parsedValue.toInt()) {
+      return parsedValue.toInt().toString();
+    }
+    return parsedValue.toString();
+  }
+
   Future<void> _fetchGlobalPrices() async {
     try {
       DocumentSnapshot doc = await FirebaseFirestore.instance.collection('GlobalSettings').doc('prices').get();
@@ -64,7 +119,6 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
     }
   }
 
-  // අවම වශයෙන් එක field එකක් හෝ පුරවා ඇත්දැයි බැලීමට අලුත් Validation එක
   String? _validateInput(String? value) {
     bool isAllEmpty = _grossWeightController.text.trim().isEmpty &&
         (_deductionController.text.trim().isEmpty || _deductionController.text.trim() == '0') &&
@@ -78,7 +132,6 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
       return 'අවශ්‍ය වේ';
     }
 
-    // දත්තයක් ඇතුළත් කර ඇත්නම් එය නිවැරදි අංකයක් දැයි පරීක්ෂා කිරීම
     if (value != null && value.trim().isNotEmpty && value.trim() != '0') {
       if (double.tryParse(value.trim()) == null) {
         return 'නිවැරදි අගයක් ඇතුළත් කරන්න';
@@ -87,54 +140,87 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
     return null;
   }
 
-  Future<void> _saveEntry() async {
+  // Edit කරන විට Confirmation එකක් පෙන්වීම
+  void _confirmAndSave() {
     if (_formKey.currentState!.validate()) {
-      setState(() { _isLoading = true; });
-
-      try {
-        // හිස්ව ඇති විට හෝ වැරදි අගයක් ඇති විට 0.0 ලෙස ගනී
-        double grossWeight = double.tryParse(_grossWeightController.text.trim()) ?? 0.0;
-        double deductions = double.tryParse(_deductionController.text.trim()) ?? 0.0;
-        double netWeight = grossWeight - deductions;
-
-        double advance = double.tryParse(_advanceController.text.trim()) ?? 0.0;
-        double fertilizer1Qty = double.tryParse(_fertilizer1Controller.text.trim()) ?? 0.0;
-        double fertilizer2Qty = double.tryParse(_fertilizer2Controller.text.trim()) ?? 0.0;
-        double teaPacket1Qty = double.tryParse(_teaPacket1Controller.text.trim()) ?? 0.0;
-        double teaPacket2Qty = double.tryParse(_teaPacket2Controller.text.trim()) ?? 0.0;
-
-        await FirebaseFirestore.instance.collection('DailyEntries').add({
-          'customerId': widget.customerId,
-          'customerName': widget.customerName,
-          'date': DateFormat('yyyy-MM-dd').format(widget.selectedDate),
-          'timestamp': widget.selectedDate,
-          
-          'grossWeight': grossWeight,
-          'deductions': deductions,
-          'netWeight': netWeight,
-          
-          'advanceAmount': advance,
-          'fertilizer1Qty': fertilizer1Qty,
-          'fertilizer2Qty': fertilizer2Qty,
-          'teaPacket1Qty': teaPacket1Qty,
-          'teaPacket2Qty': teaPacket2Qty,
-          
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-
-        if (mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('දෛනික සටහන සාර්ථකව සුරකින ලදි!')),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-        }
-      } finally {
-        if (mounted) { setState(() { _isLoading = false; }); }
+      if (_existingEntryId != null) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('තහවුරු කිරීම'),
+            content: const Text('ඔබට මෙම දත්ත යාවත්කාලීන (Update) කිරීමට අවශ්‍යද?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('නැත', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _saveEntry(isUpdate: true);
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).primaryColor),
+                child: const Text('ඔව්', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        );
+      } else {
+        _saveEntry(isUpdate: false);
       }
+    }
+  }
+
+  Future<void> _saveEntry({required bool isUpdate}) async {
+    setState(() { _isLoading = true; });
+
+    try {
+      double grossWeight = double.tryParse(_grossWeightController.text.trim()) ?? 0.0;
+      double deductions = double.tryParse(_deductionController.text.trim()) ?? 0.0;
+      double netWeight = grossWeight - deductions;
+
+      double advance = double.tryParse(_advanceController.text.trim()) ?? 0.0;
+      double fertilizer1Qty = double.tryParse(_fertilizer1Controller.text.trim()) ?? 0.0;
+      double fertilizer2Qty = double.tryParse(_fertilizer2Controller.text.trim()) ?? 0.0;
+      double teaPacket1Qty = double.tryParse(_teaPacket1Controller.text.trim()) ?? 0.0;
+      double teaPacket2Qty = double.tryParse(_teaPacket2Controller.text.trim()) ?? 0.0;
+
+      Map<String, dynamic> entryData = {
+        'grossWeight': grossWeight,
+        'deductions': deductions,
+        'netWeight': netWeight,
+        'advanceAmount': advance,
+        'fertilizer1Qty': fertilizer1Qty,
+        'fertilizer2Qty': fertilizer2Qty,
+        'teaPacket1Qty': teaPacket1Qty,
+        'teaPacket2Qty': teaPacket2Qty,
+      };
+
+      if (isUpdate && _existingEntryId != null) {
+        entryData['updatedAt'] = FieldValue.serverTimestamp();
+        await FirebaseFirestore.instance.collection('DailyEntries').doc(_existingEntryId).update(entryData);
+      } else {
+        entryData['customerId'] = widget.customerId;
+        entryData['customerName'] = widget.customerName;
+        entryData['date'] = DateFormat('yyyy-MM-dd').format(widget.selectedDate);
+        entryData['timestamp'] = widget.selectedDate;
+        entryData['createdAt'] = FieldValue.serverTimestamp();
+        
+        await FirebaseFirestore.instance.collection('DailyEntries').add(entryData);
+      }
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(isUpdate ? 'දෛනික සටහන සාර්ථකව යාවත්කාලීන කරන ලදි!' : 'දෛනික සටහන සාර්ථකව සුරකින ලදි!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    } finally {
+      if (mounted) { setState(() { _isLoading = false; }); }
     }
   }
 
@@ -153,8 +239,6 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
   @override
   Widget build(BuildContext context) {
     String formattedDate = DateFormat('yyyy MMM dd').format(widget.selectedDate);
-
-    // Keyboard එකේ උස (height) ලබාගැනීම
     double bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
@@ -166,15 +250,13 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
       ),
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
-        // SizedBox.expand මගින් Screen එකේ හිස් තැන් වල touch කළත් keyboard එක වැසීමට පහසුකම් සලසයි
         child: SizedBox.expand(
           child: SingleChildScrollView(
-            // තිරයේ ඉඩ මදි වුණොත් හෝ Keyboard එක ආවොත් පමණක් Scroll වීමට Dynamic Padding එකක් යොදා ඇත
             padding: EdgeInsets.only(
               left: 16.0, 
               right: 16.0, 
               top: 16.0, 
-              bottom: bottomInset > 0 ? bottomInset + 24.0 : 24.0, // Keyboard එක ආවොත් පමණක් පෑඩිං වැඩි වේ
+              bottom: bottomInset > 0 ? bottomInset + 24.0 : 24.0, 
             ),
             child: Form(
               key: _formKey,
@@ -182,7 +264,6 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   
-                  // --- පාරිභෝගික විස්තර පෙන්වන Card එක ---
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
@@ -216,10 +297,12 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                       suffixText: 'Kg',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    validator: _validateInput, // යාවත්කාලීන කරන ලදී
+                    validator: _validateInput, 
                   ),
+                  
+                  // අඩු කිරීම් (Deductions) Field එක Hide කර ඇත
+                  /*
                   const SizedBox(height: 20),
-
                   TextFormField(
                     controller: _deductionController,
                     decoration: InputDecoration(
@@ -230,8 +313,9 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                       suffixText: 'Kg',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    validator: _validateInput, // යාවත්කාලීන කරන ලදී
+                    validator: _validateInput, 
                   ),
+                  */
                   
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16.0),
@@ -251,11 +335,10 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                       prefixText: 'Rs. ',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    validator: _validateInput, // යාවත්කාලීන කරන ලදී
+                    validator: _validateInput, 
                   ),
                   const SizedBox(height: 20),
 
-                  // --- පොහොර ---
                   Row(
                     children: [
                       Expanded(
@@ -268,7 +351,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                             prefixIcon: const Icon(Icons.eco),
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          validator: _validateInput, // යාවත්කාලීන කරන ලදී
+                          validator: _validateInput, 
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -282,14 +365,13 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                             prefixIcon: const Icon(Icons.eco),
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          validator: _validateInput, // යාවත්කාලීන කරන ලදී
+                          validator: _validateInput, 
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 20),
 
-                  // --- තේ කොළ පැකට් ---
                   Row(
                     children: [
                       Expanded(
@@ -302,7 +384,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                             prefixIcon: const Icon(Icons.local_cafe),
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          validator: _validateInput, // යාවත්කාලීන කරන ලදී
+                          validator: _validateInput, 
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -316,7 +398,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                             prefixIcon: const Icon(Icons.local_cafe),
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          validator: _validateInput, // යාවත්කාලීන කරන ලදී
+                          validator: _validateInput, 
                         ),
                       ),
                     ],
@@ -327,7 +409,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : _saveEntry,
+                      onPressed: _isLoading ? null : _confirmAndSave, 
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Theme.of(context).primaryColor,
                         foregroundColor: Colors.white,
@@ -336,7 +418,10 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                       ),
                       child: _isLoading 
                           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text('දත්ත සුරකින්න', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          : Text(
+                              _existingEntryId != null ? 'යාවත්කාලීන කරන්න' : 'දත්ත සුරකින්න', 
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
+                            ),
                     ),
                   ),
                 ],
