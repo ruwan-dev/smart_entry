@@ -5,6 +5,9 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+// අලුතින් හදපු widget එක මෙතනට import කරගන්න
+import 'widgets/monthly_closing_widget.dart'; 
+
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
 
@@ -62,6 +65,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  // --- PDF වාර්තා සැකසීමේ Logic එක ---
   Future<void> _generatePdfReport() async {
     if (_selectedReportType == 'Customer Wise' && _selectedCustomerId == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('කරුණාකර පාරිභෝගිකයෙකු තෝරන්න')));
@@ -119,8 +123,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final pdf = pw.Document();
       
       double totalWeight = 0, totalAdvance = 0;
-      double totalF1Qty = 0, totalF2Qty = 0;
-      double totalT1Qty = 0, totalT2Qty = 0;
       double totalFertValue = 0, totalTeaValue = 0;
       double grandTotalDeductions = 0;
 
@@ -131,208 +133,53 @@ class _ReportsScreenState extends State<ReportsScreen> {
       bool showTotalDed = ['Daily All Data', 'Customer Wise', 'Advances & Items'].contains(_selectedReportType);
 
       List<String> headers = ['Date', 'Customer Name'];
-      Map<int, pw.Alignment> alignments = {
-        0: pw.Alignment.centerLeft,
-        1: pw.Alignment.centerLeft,
-      };
-      
+      Map<int, pw.Alignment> alignments = {0: pw.Alignment.centerLeft, 1: pw.Alignment.centerLeft};
       int colIndex = 2;
       if (showWeight) { headers.add('Weight\n(Kg)'); alignments[colIndex++] = pw.Alignment.centerRight; }
       if (showAdvance) { headers.add('Advance\n(Rs)'); alignments[colIndex++] = pw.Alignment.centerRight; }
-      
-      if (showFertilizer) { 
-        headers.add('Fert. 1\nQty (Val)'); alignments[colIndex++] = pw.Alignment.center; 
-        headers.add('Fert. 2\nQty (Val)'); alignments[colIndex++] = pw.Alignment.center; 
-      }
-      
-      if (showTeaPkt) { headers.add('Tea Pkt\nBreakdown'); alignments[colIndex++] = pw.Alignment.center; }
-      if (showTotalDed) { headers.add('Total Ded.\n(Rs)'); alignments[colIndex++] = pw.Alignment.centerRight; }
+      if (showFertilizer) { headers.add('Fert. 1'); alignments[colIndex++] = pw.Alignment.center; headers.add('Fert. 2'); alignments[colIndex++] = pw.Alignment.center; }
+      if (showTeaPkt) { headers.add('Tea Pkt'); alignments[colIndex++] = pw.Alignment.center; }
+      if (showTotalDed) { headers.add('Total Ded.'); alignments[colIndex++] = pw.Alignment.centerRight; }
 
-      List<List<String>> tableData = [];
-      for (var doc in entries) {
+      List<List<String>> tableData = entries.map((doc) {
         var data = doc.data() as Map<String, dynamic>;
-        DateTime ts = (data['timestamp'] as Timestamp).toDate();
+        String date = DateFormat('MM-dd').format((data['timestamp'] as Timestamp).toDate());
         String cName = customerNames[data['customerId']] ?? '-';
         
         double w = (data['netWeight'] ?? 0).toDouble();
         double adv = (data['advanceAmount'] ?? 0).toDouble();
-        
-        double f1Qty = (data['fertilizer1Qty'] ?? 0).toDouble();
-        double f2Qty = (data['fertilizer2Qty'] ?? 0).toDouble();
-        double t1Qty = (data['teaPacket1Qty'] ?? 0).toDouble();
-        double t2Qty = (data['teaPacket2Qty'] ?? 0).toDouble();
+        double f1 = (data['fertilizer1Qty'] ?? 0).toDouble();
+        double f2 = (data['fertilizer2Qty'] ?? 0).toDouble();
+        double t1 = (data['teaPacket1Qty'] ?? 0).toDouble();
+        double t2 = (data['teaPacket2Qty'] ?? 0).toDouble();
+        double rowTotal = adv + (f1 * fert1Price) + (f2 * fert2Price) + (t1 * teaPkt1Price) + (t2 * teaPkt2Price);
 
-        double fertValue = (f1Qty * fert1Price) + (f2Qty * fert2Price);
-        double teaValue = (t1Qty * teaPkt1Price) + (t2Qty * teaPkt2Price);
-        
-        double rowTotalDed = adv + fertValue + teaValue;
-
-        totalWeight += w;
-        totalAdvance += adv;
-        totalF1Qty += f1Qty; totalF2Qty += f2Qty;
-        totalT1Qty += t1Qty; totalT2Qty += t2Qty;
-        totalFertValue += fertValue;
-        totalTeaValue += teaValue;
-        grandTotalDeductions += rowTotalDed;
-
-        String f1Str = f1Qty > 0 ? '${f1Qty.toInt()}\n(Rs.${NumberFormat('#,##0').format(f1Qty * fert1Price)})' : '-';
-        String f2Str = f2Qty > 0 ? '${f2Qty.toInt()}\n(Rs.${NumberFormat('#,##0').format(f2Qty * fert2Price)})' : '-';
-
-        String teaStr = '-';
-        if (t1Qty > 0 || t2Qty > 0) {
-          List<String> tParts = [];
-          if (t1Qty > 0) tParts.add('T1: ${t1Qty.toInt()}');
-          if (t2Qty > 0) tParts.add('T2: ${t2Qty.toInt()}');
-          teaStr = '${tParts.join(', ')}\n(Rs.${NumberFormat('#,##0').format(teaValue)})';
-        }
-
-        List<String> row = [
-          DateFormat('yyyy-MM-dd').format(ts),
-          cName,
-        ];
-        
+        List<String> row = [date, cName];
         if (showWeight) row.add(w > 0 ? w.toStringAsFixed(1) : '-');
-        if (showAdvance) row.add(adv > 0 ? NumberFormat('#,##0.00').format(adv) : '-');
-        
-        if (showFertilizer) {
-          row.add(f1Str);
-          row.add(f2Str);
-        }
+        if (showAdvance) row.add(adv > 0 ? adv.toStringAsFixed(0) : '-');
+        if (showFertilizer) { row.add(f1 > 0 ? f1.toStringAsFixed(0) : '-'); row.add(f2 > 0 ? f2.toStringAsFixed(0) : '-'); }
+        if (showTeaPkt) row.add(t1 > 0 || t2 > 0 ? '${t1.toInt()}/${t2.toInt()}' : '-');
+        if (showTotalDed) row.add(rowTotal > 0 ? rowTotal.toStringAsFixed(0) : '-');
+        return row;
+      }).toList();
 
-        if (showTeaPkt) row.add(teaStr);
-        if (showTotalDed) row.add(rowTotalDed > 0 ? NumberFormat('#,##0.00').format(rowTotalDed) : '-');
-
-        tableData.add(row);
-      }
-
-      String totalF1Str = totalF1Qty > 0 ? '${totalF1Qty.toInt()}\n(Rs.${NumberFormat('#,##0').format(totalF1Qty * fert1Price)})' : '-';
-      String totalF2Str = totalF2Qty > 0 ? '${totalF2Qty.toInt()}\n(Rs.${NumberFormat('#,##0').format(totalF2Qty * fert2Price)})' : '-';
-
-      String totalTeaStr = '-';
-      if (totalT1Qty > 0 || totalT2Qty > 0) {
-        List<String> tParts = [];
-        if (totalT1Qty > 0) tParts.add('T1: ${totalT1Qty.toInt()}');
-        if (totalT2Qty > 0) tParts.add('T2: ${totalT2Qty.toInt()}');
-        totalTeaStr = '${tParts.join(', ')}\n(Rs.${NumberFormat('#,##0').format(totalTeaValue)})';
-      }
-
-      List<String> totalRow = ['TOTAL', ''];
-      if (showWeight) totalRow.add(totalWeight > 0 ? totalWeight.toStringAsFixed(1) : '-');
-      if (showAdvance) totalRow.add(NumberFormat('#,##0.00').format(totalAdvance));
-      
-      if (showFertilizer) {
-        totalRow.add(totalF1Str);
-        totalRow.add(totalF2Str);
-      }
-
-      if (showTeaPkt) totalRow.add(totalTeaStr);
-      if (showTotalDed) totalRow.add(NumberFormat('#,##0.00').format(grandTotalDeductions));
-      
-      tableData.add(totalRow);
-
-      String cNameForTitle = _selectedReportType == 'Customer Wise' 
-          ? (customerNames[_selectedCustomerId] ?? '') 
-          : 'All Customers';
-
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(24), 
-          // Footer එක මෙතැනින් එකතු කරන ලදී
-          footer: (pw.Context context) {
-            return pw.Container(
-              alignment: pw.Alignment.centerRight,
-              margin: const pw.EdgeInsets.only(top: 10),
-              child: pw.Text(
-                'Powered by OrbitView Innovations',
-                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
-              ),
-            );
-          },
-          build: (pw.Context context) {
-            return [
-              pw.Header(
-                level: 0,
-                child: pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text('SMART ENTRY - SYSTEM REPORT', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
-                    pw.Text(DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()), style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
-                  ]
-                )
-              ),
-              pw.SizedBox(height: 5),
-              pw.Text('Report Type: $_selectedReportType', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-              pw.Text('Period: ${DateFormat('yyyy-MM-dd').format(_startDate)} to ${DateFormat('yyyy-MM-dd').format(_endDate)}', style: const pw.TextStyle(fontSize: 11)),
-              if (_selectedReportType == 'Customer Wise')
-                pw.Text('Customer: $cNameForTitle', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
-              pw.SizedBox(height: 15),
-              
-              pw.TableHelper.fromTextArray(
-                context: context,
-                headers: headers,
-                data: tableData,
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 8.5),
-                cellStyle: const pw.TextStyle(fontSize: 8.5),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.green700),
-                rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5))),
-                cellAlignment: pw.Alignment.centerLeft,
-                cellAlignments: alignments,
-              ),
-
-              pw.SizedBox(height: 20),
-
-              if (showTotalDed || showFertilizer || showTeaPkt)
-                pw.Container(
-                  padding: const pw.EdgeInsets.all(10),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.grey100,
-                    border: pw.Border.all(color: PdfColors.grey400),
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-                  ),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('SUMMARY (DEDUCTIONS & ITEMS)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-                      pw.Divider(color: PdfColors.grey400),
-                      pw.SizedBox(height: 5),
-                      
-                      if (showAdvance)
-                        _buildSummaryRow('Total Advances Issued:', 'Rs. ${NumberFormat('#,##0.00').format(totalAdvance)}'),
-                      
-                      if (showFertilizer) ...[
-                        pw.SizedBox(height: 4),
-                        pw.Text('Fertilizer Breakdown:', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.green700)),
-                        if (totalF1Qty > 0) _buildSummaryRow('  - Fertilizer Type 1 (${totalF1Qty.toInt()} Items):', 'Rs. ${NumberFormat('#,##0.00').format(totalF1Qty * fert1Price)}'),
-                        if (totalF2Qty > 0) _buildSummaryRow('  - Fertilizer Type 2 (${totalF2Qty.toInt()} Items):', 'Rs. ${NumberFormat('#,##0.00').format(totalF2Qty * fert2Price)}'),
-                        _buildSummaryRow('  Total Fertilizer Value:', 'Rs. ${NumberFormat('#,##0.00').format(totalFertValue)}', isBold: true),
-                      ],
-
-                      if (showTeaPkt) ...[
-                        pw.SizedBox(height: 4),
-                        pw.Text('Tea Packet Breakdown:', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.green700)),
-                        if (totalT1Qty > 0) _buildSummaryRow('  - Tea Packet Type 1 (${totalT1Qty.toInt()} Items):', 'Rs. ${NumberFormat('#,##0.00').format(totalT1Qty * teaPkt1Price)}'),
-                        if (totalT2Qty > 0) _buildSummaryRow('  - Tea Packet Type 2 (${totalT2Qty.toInt()} Items):', 'Rs. ${NumberFormat('#,##0.00').format(totalT2Qty * teaPkt2Price)}'),
-                        _buildSummaryRow('  Total Tea Packets Value:', 'Rs. ${NumberFormat('#,##0.00').format(totalTeaValue)}', isBold: true),
-                      ],
-                      
-                      if (showTotalDed) ...[
-                        pw.Divider(color: PdfColors.grey400),
-                        _buildSummaryRow('GRAND TOTAL DEDUCTIONS:', 'Rs. ${NumberFormat('#,##0.00').format(grandTotalDeductions)}', isBold: true),
-                      ]
-                    ]
-                  )
-                )
-            ];
-          },
+      pdf.addPage(pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        footer: (pw.Context context) => pw.Container(
+          alignment: pw.Alignment.centerRight,
+          child: pw.Text('Powered by OrbitView Innovations', style: const pw.TextStyle(fontSize: 8)),
         ),
-      );
+        build: (pw.Context context) => [
+          pw.Header(level: 0, child: pw.Text('SMART ENTRY - SYSTEM REPORT', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+          pw.SizedBox(height: 10),
+          pw.Text('Report: $_selectedReportType | Period: ${DateFormat('yyyy-MM-dd').format(_startDate)} to ${DateFormat('yyyy-MM-dd').format(_endDate)}'),
+          pw.SizedBox(height: 20),
+          pw.TableHelper.fromTextArray(headers: headers, data: tableData, cellAlignments: alignments, headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9), cellStyle: const pw.TextStyle(fontSize: 8)),
+        ],
+      ));
 
-      await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => pdf.save(),
-        name: 'Report_${_selectedReportType.replaceAll(' ', '')}_${DateTime.now().millisecondsSinceEpoch}.pdf',
-      );
-
+      await Printing.layoutPdf(onLayout: (format) async => pdf.save(), name: 'Report.pdf');
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
@@ -340,137 +187,122 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  pw.Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 2),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(label, style: pw.TextStyle(fontSize: 10, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
-          pw.Text(value, style: pw.TextStyle(fontSize: 10, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('වාර්තා (Reports)')),
+      backgroundColor: Colors.grey.shade50,
+      appBar: AppBar(title: const Text('වාර්තා සහ ගිණුම් පියවීම')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('කාල සීමාව තෝරන්න', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            // --- 1. මාසික ගිණුම් පියවීම (Closing Section) ---
+            const Text('මාසික ගිණුම් අවසන් කිරීම (Closing)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () => _selectDate(context, true),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('මුල (From)', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                          const SizedBox(height: 4),
-                          Text(DateFormat('yyyy-MM-dd').format(_startDate), style: const TextStyle(fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: InkWell(
-                    onTap: () => _selectDate(context, false),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('අග (To)', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                          const SizedBox(height: 4),
-                          Text(DateFormat('yyyy-MM-dd').format(_endDate), style: const TextStyle(fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
+            const MonthlyClosingWidget(), // මෙතැනදී අලුත් component එක call කරනවා
             
-            const Text('වාර්තා වර්ගය', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _selectedReportType,
-                  isExpanded: true,
-                  items: _reportTypes.map((e) {
-                    String display = e;
-                    if (e == 'Daily All Data') display = 'දිනපතා සියලු දත්ත (Daily All Data)';
-                    if (e == 'Customer Wise') display = 'පාරිභෝගිකයා අනුව (Customer Wise)';
-                    if (e == 'Tea Leaves Only') display = 'දළු පමණක් (Tea Leaves Only)';
-                    if (e == 'Fertilizer Wise') display = 'පොහොර ගත් අය (Fertilizer Wise)';
-                    if (e == 'Tea Packet Wise') display = 'තේ පැකට් ගත් අය (Tea Pkt Wise)';
-                    if (e == 'Advances & Items') display = 'අත්තිකාරම් සහ බඩු (Advances & Items)'; 
-                    return DropdownMenuItem(value: e, child: Text(display));
-                  }).toList(),
-                  onChanged: (val) {
-                    setState(() {
-                      _selectedReportType = val!;
-                      if (val != 'Customer Wise') _selectedCustomerId = null;
-                    });
-                  },
-                ),
-              ),
-            ),
+            const SizedBox(height: 30),
+            const Divider(thickness: 2),
+            const SizedBox(height: 20),
 
-            if (_selectedReportType == 'Customer Wise') ...[
-              const SizedBox(height: 24),
-              const Text('පාරිභෝගිකයා තෝරන්න', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedCustomerId,
-                    hint: const Text('පාරිභෝගිකයෙකු තෝරන්න'),
-                    isExpanded: true,
-                    items: _customers.map((doc) => DropdownMenuItem(value: doc.id, child: Text(doc['name'] ?? ''))).toList(),
-                    onChanged: (val) => setState(() => _selectedCustomerId = val),
-                  ),
-                ),
-              ),
-            ],
+            // --- 2. PDF වාර්තා ලබාගැනීමේ කොටස ---
+            const Text('PDF වාර්තා ලබාගන්න', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            
+            _buildDatePickerSection(),
+            const SizedBox(height: 20),
+            
+            const Text('වාර්තා වර්ගය', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            _buildReportTypeSelector(),
+
+            if (_selectedReportType == 'Customer Wise') _buildCustomerSelector(),
 
             const SizedBox(height: 40),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : _generatePdfReport,
-                icon: _isLoading 
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Icon(Icons.picture_as_pdf, color: Colors.white),
-                label: Text(_isLoading ? 'සකසමින් පවතී...' : 'PDF වාර්තාව ලබාගන්න', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green.shade700,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            )
+            _buildPdfButton(),
           ],
         ),
+      ),
+    );
+  }
+
+  // --- UI Helper Widgets (කේතය පිරිසිදුව තබා ගැනීමට) ---
+
+  Widget _buildDatePickerSection() {
+    return Row(
+      children: [
+        Expanded(child: _dateTile('මුල', _startDate, true)),
+        const SizedBox(width: 15),
+        Expanded(child: _dateTile('අග', _endDate, false)),
+      ],
+    );
+  }
+
+  Widget _dateTile(String label, DateTime date, bool isStart) {
+    return InkWell(
+      onTap: () => _selectDate(context, isStart),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            Text(DateFormat('yyyy-MM-dd').format(date), style: const TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReportTypeSelector() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedReportType,
+          isExpanded: true,
+          items: _reportTypes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+          onChanged: (val) => setState(() { _selectedReportType = val!; if(val != 'Customer Wise') _selectedCustomerId = null; }),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomerSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        const Text('පාරිභෝගිකයා තෝරන්න', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedCustomerId,
+              hint: const Text('පාරිභෝගිකයෙකු තෝරන්න'),
+              isExpanded: true,
+              items: _customers.map((doc) => DropdownMenuItem(value: doc.id, child: Text(doc['name'] ?? ''))).toList(),
+              onChanged: (val) => setState(() => _selectedCustomerId = val),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPdfButton() {
+    return SizedBox(
+      width: double.infinity, height: 52,
+      child: ElevatedButton.icon(
+        onPressed: _isLoading ? null : _generatePdfReport,
+        icon: _isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.picture_as_pdf),
+        label: const Text('PDF වාර්තාව ලබාගන්න', style: TextStyle(fontWeight: FontWeight.bold)),
+        style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white),
       ),
     );
   }

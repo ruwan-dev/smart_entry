@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'bill_pdf_service.dart'; 
+
+// ගොනු තුනම එකම Folder එකේ තියෙන නිසා මෙහෙම Import කරන්න
+import 'bill_pdf_service.dart';
+import 'raw_text_print_service.dart';
 
 class MonthlyBillScreen extends StatefulWidget {
   final String customerId;
@@ -22,7 +25,6 @@ class MonthlyBillScreen extends StatefulWidget {
 class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _monthlyBills = [];
-  double fert1Price = 0, fert2Price = 0, teaPkt1Price = 0, teaPkt2Price = 0;
 
   @override
   void initState() {
@@ -40,25 +42,18 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
   Future<void> _loadAllData() async {
     setState(() => _isLoading = true);
     try {
-      var globalDoc = await FirebaseFirestore.instance.collection('GlobalSettings').doc('prices').get();
-      if (globalDoc.exists) {
-        var data = globalDoc.data() as Map<String, dynamic>? ?? {};
-        fert1Price = _parseDouble(data['fertilizer1Price']);
-        fert2Price = _parseDouble(data['fertilizer2Price']);
-        teaPkt1Price = _parseDouble(data['teaPacket1Price']);
-        teaPkt2Price = _parseDouble(data['teaPacket2Price']);
-      }
-
+      // 1. Monthly Rates (Tea Rate & Transport Rate) ලබා ගැනීම
       var ratesSnap = await FirebaseFirestore.instance.collection('MonthlyRates').get();
       Map<String, Map<String, double>> monthlyRatesMap = {};
       for (var doc in ratesSnap.docs) {
-        var data = doc.data() as Map<String, dynamic>;
+        var data = doc.data();
         monthlyRatesMap[doc.id] = {
           'teaRate': _parseDouble(data['teaRate']),
           'transportRate': _parseDouble(data['transportRate']),
         };
       }
 
+      // 2. Daily Entries ලබා ගැනීම
       var entriesSnap = await FirebaseFirestore.instance
           .collection('DailyEntries')
           .where('customerId', isEqualTo: widget.customerId)
@@ -67,13 +62,11 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
 
       Map<String, List<QueryDocumentSnapshot>> entriesByMonth = {};
       for (var doc in entriesSnap.docs) {
-        var data = doc.data() as Map<String, dynamic>? ?? {};
+        var data = doc.data() as Map<String, dynamic>;
         String dateStr = data['date'] ?? ''; 
         if (dateStr.length >= 7) {
           String monthKey = dateStr.substring(0, 7); 
-          if (!entriesByMonth.containsKey(monthKey)) {
-            entriesByMonth[monthKey] = [];
-          }
+          if (!entriesByMonth.containsKey(monthKey)) entriesByMonth[monthKey] = [];
           entriesByMonth[monthKey]!.add(doc);
         }
       }
@@ -93,66 +86,69 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
         double teaRate = monthlyRatesMap[rateDocId]?['teaRate'] ?? 0;
         double transportRate = monthlyRatesMap[rateDocId]?['transportRate'] ?? 0;
 
-        double sumNetWeight = 0, sumAdvance = 0;
-        double sumFert1 = 0, sumFert2 = 0, sumTeaPkt1 = 0, sumTeaPkt2 = 0;
+        double sumNetWeight = 0;
+        double sumAdvance = 0;
+        double sumItemsTotal = 0;
         
         Map<String, Map<String, dynamic>> dailyData = {};
 
         for (var doc in docs) {
-          var data = doc.data() as Map<String, dynamic>? ?? {};
-          String date = (data['date'] ?? '').toString().substring(8);
+          var data = doc.data() as Map<String, dynamic>;
+          String date = data['date'].toString();
           double netW = _parseDouble(data['netWeight']);
+          
+          // Firestore image එකේ තිබූ Fields
+          double f1Qty = _parseDouble(data['fertilizer1Qty']);
+          double f1Price = _parseDouble(data['fertilizer1UnitPrice']);
+          double f2Qty = _parseDouble(data['fertilizer2Qty']);
+          double f2Price = _parseDouble(data['fertilizer2UnitPrice']);
+          double tp1Qty = _parseDouble(data['teaPacket1Qty']);
+          double tp1Price = _parseDouble(data['teaPacket1UnitPrice']);
+          double tp2Qty = _parseDouble(data['teaPacket2Qty']);
+          double tp2Price = _parseDouble(data['teaPacket2UnitPrice']);
           double adv = _parseDouble(data['advanceAmount']);
-          double f1 = _parseDouble(data['fertilizer1Qty']);
-          double f2 = _parseDouble(data['fertilizer2Qty']);
-          double tp1 = _parseDouble(data['teaPacket1Qty']);
-          double tp2 = _parseDouble(data['teaPacket2Qty']);
 
           sumNetWeight += netW;
           sumAdvance += adv;
-          sumFert1 += f1;
-          sumFert2 += f2;
-          sumTeaPkt1 += tp1;
-          sumTeaPkt2 += tp2;
-
-          if (!dailyData.containsKey(date)) {
-            dailyData[date] = {'weight': 0.0, 'items': []};
-          }
           
+          double dayItemsTotal = (f1Qty * f1Price) + (f2Qty * f2Price) + (tp1Qty * tp1Price) + (tp2Qty * tp2Price);
+          sumItemsTotal += dayItemsTotal;
+
+          if (!dailyData.containsKey(date)) dailyData[date] = {'weight': 0.0, 'items': []};
           dailyData[date]!['weight'] += netW;
-          if (f1 > 0) dailyData[date]!['items'].add({'desc': 'පොහොර 01 (${f1.toStringAsFixed(0)})', 'amt': f1 * fert1Price});
-          if (f2 > 0) dailyData[date]!['items'].add({'desc': 'පොහොර 02 (${f2.toStringAsFixed(0)})', 'amt': f2 * fert2Price});
-          if (tp1 > 0) dailyData[date]!['items'].add({'desc': 'තේ පැකට් 01 (${tp1.toStringAsFixed(0)})', 'amt': tp1 * teaPkt1Price});
-          if (tp2 > 0) dailyData[date]!['items'].add({'desc': 'තේ පැකට් 02 (${tp2.toStringAsFixed(0)})', 'amt': tp2 * teaPkt2Price});
-          if (adv > 0) dailyData[date]!['items'].add({'desc': 'අත්තිකාරම්', 'amt': adv});
+
+          // List එකට Item එකතු කිරීම
+          if (f1Qty > 0) dailyData[date]!['items'].add({'desc': 'Fertilizer 01', 'qty': f1Qty, 'uPrice': f1Price, 'amt': f1Qty * f1Price});
+          if (f2Qty > 0) dailyData[date]!['items'].add({'desc': 'Fertilizer 02', 'qty': f2Qty, 'uPrice': f2Price, 'amt': f2Qty * f2Price});
+          if (tp1Qty > 0) dailyData[date]!['items'].add({'desc': 'Tea Packet 01', 'qty': tp1Qty, 'uPrice': tp1Price, 'amt': tp1Qty * tp1Price});
+          if (tp2Qty > 0) dailyData[date]!['items'].add({'desc': 'Tea Packet 02', 'qty': tp2Qty, 'uPrice': tp2Price, 'amt': tp2Qty * tp2Price});
+          if (adv > 0) dailyData[date]!['items'].add({'desc': 'Advance', 'qty': 0, 'uPrice': 0, 'amt': adv});
         }
 
         double grossIncome = sumNetWeight * teaRate;
         double transportCost = sumNetWeight * transportRate;
-        double currentDeductions = (sumNetWeight * transportRate) + sumAdvance + (sumFert1 * fert1Price) + (sumFert2 * fert2Price) + (sumTeaPkt1 * teaPkt1Price) + (sumTeaPkt2 * teaPkt2Price);
+        double otherCosts = sumAdvance + sumItemsTotal;
+        double totalDeductions = transportCost + otherCosts;
         double previousArrears = carriedForwardArrears;
-        double netPayable = grossIncome - (currentDeductions + previousArrears);
+        double netPayable = grossIncome - (totalDeductions + previousArrears);
 
-        if (netPayable < 0) carriedForwardArrears = netPayable.abs();
-        else carriedForwardArrears = 0;
+        carriedForwardArrears = netPayable < 0 ? netPayable.abs() : 0;
 
         List<String> sortedDates = dailyData.keys.toList()..sort();
         List<Map<String, dynamic>> tableRows = sortedDates.map((d) => {
-          'date': d,
-          'weight': dailyData[d]!['weight'],
-          'items': dailyData[d]!['items']
+          'date': d, 'weight': dailyData[d]!['weight'], 'items': dailyData[d]!['items']
         }).toList();
 
         calculatedBills.add({
           'displayMonth': '$monthName $yearStr',
-          'teaRate': teaRate, // <--- Tea Rate එක මෙතන තියෙනවා
+          'teaRate': teaRate, 
           'grossIncome': grossIncome,
-          'totalDeductions': currentDeductions,
+          'totalDeductions': totalDeductions,
           'previousArrears': previousArrears,
           'netPayable': netPayable,
           'tableRows': tableRows,
           'transportCost': transportCost,
-          'otherCosts': sumAdvance + (sumFert1 * fert1Price) + (sumFert2 * fert2Price) + (sumTeaPkt1 * teaPkt1Price) + (sumTeaPkt2 * teaPkt2Price),
+          'otherCosts': otherCosts,
         });
       }
 
@@ -186,51 +182,62 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: ExpansionTile(
         title: Text(bill['displayMonth'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-        subtitle: Text('ශුද්ධ ගෙවීම: Rs. ${bill['netPayable'].toStringAsFixed(2)}', style: TextStyle(color: bill['netPayable'] < 0 ? Colors.red : Colors.green.shade800, fontWeight: FontWeight.bold)),
+        subtitle: Text('ශුද්ධ ගෙවීම: Rs. ${bill['netPayable'].toStringAsFixed(2)}', 
+            style: TextStyle(color: bill['netPayable'] < 0 ? Colors.red : Colors.green.shade800, fontWeight: FontWeight.bold)),
         children: [
           Container(
             padding: const EdgeInsets.all(15),
             child: Column(children: [
               const Text('NALEEN SURANGA', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const Text('Tea Purchasing & Suppliers', style: TextStyle(fontSize: 10)),
+              const Text('Authorized Green Dealer', style: TextStyle(fontSize: 10)),
               const Divider(height: 30),
               
               Table(
                 border: TableBorder.all(color: Colors.grey.shade300),
                 defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                columnWidths: const {0: FlexColumnWidth(1), 1: FlexColumnWidth(1), 2: FlexColumnWidth(3.5), 3: FlexColumnWidth(1.5)},
+                columnWidths: const {0: FlexColumnWidth(1.2), 1: FlexColumnWidth(2.5), 2: FlexColumnWidth(1), 3: FlexColumnWidth(1.5), 4: FlexColumnWidth(1.5)},
                 children: [
-                  TableRow(decoration: BoxDecoration(color: Colors.grey.shade100), children: const [_Cell('දිනය', b: true), _Cell('දළු (KG)', b: true), _Cell('විස්තරය', b: true), _Cell('මුදල', b: true)]),
+                  TableRow(
+                    decoration: BoxDecoration(color: Colors.grey.shade100), 
+                    children: const [
+                      _Cell('දිනය', b: true), _Cell('විස්තරය', b: true), _Cell('ප්‍රමාණය', b: true), _Cell('මිල', b: true), _Cell('එකතුව', b: true)
+                    ]
+                  ),
                   ...(bill['tableRows'] as List).map((row) {
                     List<dynamic> items = row['items'];
+                    double weight = row['weight'];
+                    
                     return TableRow(
                       children: [
                         _Cell(row['date']),
-                        _Cell(row['weight'] > 0 ? row['weight'].toStringAsFixed(1) : '-'),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: items.isEmpty 
-                            ? [const _InternalCell('-')] 
-                            : items.map((i) => _InternalCell(i['desc'], align: TextAlign.left)).toList(),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: items.isEmpty 
-                            ? [const _InternalCell('-')] 
-                            : items.map((i) => _InternalCell(i['amt'].toStringAsFixed(2), align: TextAlign.right, color: Colors.red)).toList(),
-                        ),
+                        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          if (weight > 0) const _InternalCell('Tea Leaves', align: TextAlign.left),
+                          ...items.map((i) => _InternalCell(i['desc'], align: TextAlign.left)),
+                        ]),
+                        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          if (weight > 0) _InternalCell('${weight.toStringAsFixed(1)} Kg', align: TextAlign.right),
+                          ...items.map((i) => _InternalCell(i['qty'] > 0 ? i['qty'].toStringAsFixed(0) : '-', align: TextAlign.right)),
+                        ]),
+                        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          if (weight > 0) _InternalCell(bill['teaRate'].toStringAsFixed(2), align: TextAlign.right),
+                          ...items.map((i) => _InternalCell(i['uPrice'] > 0 ? i['uPrice'].toStringAsFixed(2) : '-', align: TextAlign.right)),
+                        ]),
+                        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          if (weight > 0) _InternalCell((weight * bill['teaRate']).toStringAsFixed(2), align: TextAlign.right),
+                          ...items.map((i) => _InternalCell(i['amt'].toStringAsFixed(2), align: TextAlign.right, color: Colors.red)),
+                        ]),
                       ],
                     );
-                  }),
+                  }).toList(),
                 ],
               ),
               
               const SizedBox(height: 25),
-              // --- මෙතනට Tea Rate එක එකතු කළා ---
-              _row('තේ දළු මිල (1kg)', 'Rs. ${bill['teaRate'].toStringAsFixed(2)}', b: false), 
               _row('මුළු දළු ආදායම', 'Rs. ${bill['grossIncome'].toStringAsFixed(2)}', b: true),
-              _row('අඩු කිරීම් වල එකතුව', '- Rs. ${bill['totalDeductions'].toStringAsFixed(2)}', c: Colors.red, b: true),
-              if (bill['previousArrears'] > 0) _row('පසුගිය හිඟ මුදල', '- Rs. ${bill['previousArrears'].toStringAsFixed(2)}', c: Colors.red),
+              _row('ප්‍රවාහන වියදම', '- Rs. ${bill['transportCost'].toStringAsFixed(2)}', c: Colors.red),
+              _row('අනෙකුත් අඩු කිරීම්', '- Rs. ${bill['otherCosts'].toStringAsFixed(2)}', c: Colors.red),
+              if (bill['previousArrears'] > 0) 
+                _row('පසුගිය හිඟ මුදල', '- Rs. ${bill['previousArrears'].toStringAsFixed(2)}', c: Colors.red),
               const Divider(thickness: 2),
               _row('ශුද්ධ ගෙවීම', 'Rs. ${bill['netPayable'].toStringAsFixed(2)}', b: true, fontSize: 18, c: bill['netPayable'] < 0 ? Colors.red : Colors.green.shade900),
               
@@ -238,21 +245,33 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
               const Center(child: Text('Powered by OrbitView Innovations', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold))),
               const SizedBox(height: 15),
 
-              SizedBox(
-                width: double.infinity, height: 50, 
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    BillPdfService.generateMonthlyInvoice(
-                      bill: bill,
-                      customerName: widget.customerName,
-                      refNumber: widget.refNumber,
-                    );
-                  }, 
-                  icon: const Icon(Icons.print), 
-                  label: const Text('INVOICE එක මුද්‍රණය කරන්න', style: TextStyle(fontWeight: FontWeight.bold)), 
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white)
-                )
-              ),
+              Row(children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => BillPdfService.printFastDotMatrix(
+                      bill: bill, customerName: widget.customerName, refNumber: widget.refNumber
+                    ), 
+                    icon: const Icon(Icons.picture_as_pdf), 
+                    label: const Text('PDF'), 
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey, foregroundColor: Colors.white, minimumSize: const Size(0, 50))
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2, 
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      bool ok = await RawTextPrintService.printToWindows(
+                        bill: bill, customerName: widget.customerName, refNumber: widget.refNumber
+                      );
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? 'මුද්‍රණය සඳහා යවන ලදී' : 'මුද්‍රණ දෝෂයකි'), backgroundColor: ok ? Colors.green : Colors.red));
+                    }, 
+                    icon: const Icon(Icons.bolt), 
+                    label: const Text('DOT MATRIX PRINT'), 
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white, minimumSize: const Size(0, 50))
+                  )
+                ),
+              ]),
             ]),
           ),
         ],
@@ -260,23 +279,42 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
     );
   }
 
-  Widget _row(String l, String v, {bool b = false, Color? c, double fontSize = 14}) => Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(l, style: TextStyle(fontSize: fontSize, fontWeight: b ? FontWeight.bold : FontWeight.normal)), Text(v, style: TextStyle(fontSize: fontSize, fontWeight: b ? FontWeight.bold : FontWeight.normal, color: c))]));
+  Widget _row(String l, String v, {bool b = false, Color? c, double fontSize = 14}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4), 
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+        children: [
+          Text(l, style: TextStyle(fontSize: fontSize, fontWeight: b ? FontWeight.bold : FontWeight.normal)), 
+          Text(v, style: TextStyle(fontSize: fontSize, fontWeight: b ? FontWeight.bold : FontWeight.normal, color: c))
+        ]
+      )
+    );
+  }
 }
 
 class _InternalCell extends StatelessWidget {
-  final String text; final TextAlign align; final Color? color;
+  final String text; 
+  final TextAlign align; 
+  final Color? color;
   const _InternalCell(this.text, {this.align = TextAlign.center, this.color});
+
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(8),
-    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300, width: 0.5))),
-    child: Text(text, textAlign: align, style: TextStyle(fontSize: 11, color: color)),
+    padding: const EdgeInsets.all(5), 
+    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300, width: 0.5))), 
+    child: Text(text, textAlign: align, style: TextStyle(fontSize: 10, color: color))
   );
 }
 
 class _Cell extends StatelessWidget {
-  final String text; final bool b;
+  final String text; 
+  final bool b;
   const _Cell(this.text, {this.b = false});
+
   @override
-  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.all(10), child: Text(text, textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: b ? FontWeight.bold : FontWeight.normal)));
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(8), 
+    child: Text(text, textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: b ? FontWeight.bold : FontWeight.normal))
+  );
 }

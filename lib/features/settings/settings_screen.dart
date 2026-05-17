@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb; 
+import 'package:universal_html/html.dart' as html; 
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -17,7 +20,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoadingPassword = false;
   bool _obscureCurrent = true;
   bool _obscureNew = true;
-
 
   // මාසික ගාස්තු සඳහා Controllers
   final _monthlyFormKey = GlobalKey<FormState>();
@@ -42,6 +44,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late List<String> _years;
   bool _isLoadingMonthly = false;
   bool _isLoadingGlobal = false;
+  
+  // Backup Loading State
+  bool _isLoadingBackup = false;
 
   @override
   void initState() {
@@ -51,11 +56,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _selectedYear = now.year.toString();
     _years = List.generate(5, (index) => (now.year - 1 + index).toString());
     
-    // ආරම්භයේදීම Global මිල ගණන් load කිරීම
     _loadGlobalPrices();
   }
 
-  // --- Global මිල ගණන් Load කිරීම ---
   Future<void> _loadGlobalPrices() async {
     try {
       DocumentSnapshot doc = await FirebaseFirestore.instance.collection('GlobalSettings').doc('prices').get();
@@ -72,62 +75,96 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Ignore error initially
     }
   }
+  
+  // --- Database Backup (Web සඳහා) ---
+  dynamic _sanitizeDataForJson(dynamic data) {
+    if (data is Timestamp) {
+      return data.toDate().toIso8601String();
+    } else if (data is Map) {
+      Map<String, dynamic> newMap = {};
+      data.forEach((key, value) {
+        newMap[key.toString()] = _sanitizeDataForJson(value);
+      });
+      return newMap;
+    } else if (data is List) {
+      return data.map((item) => _sanitizeDataForJson(item)).toList();
+    }
+    return data;
+  }
 
-  // --- 🔥 නව කාර්යය: මුරපදය වෙනස් කිරීමේ Logic එක ---
+  Future<void> _exportDatabaseBackupWeb() async {
+    setState(() { _isLoadingBackup = true; });
+    try {
+      Map<String, dynamic> fullBackupData = {};
+      
+      List<String> collections = ['Customers', 'DailyEntries', 'MonthlyRates', 'GlobalSettings'];
+
+      for (String col in collections) {
+        var snapshot = await FirebaseFirestore.instance.collection(col).get();
+        fullBackupData[col] = snapshot.docs.map((doc) {
+          return {
+            'documentId': doc.id,
+            ..._sanitizeDataForJson(doc.data()) as Map<String, dynamic>
+          };
+        }).toList();
+      }
+
+      String jsonString = const JsonEncoder.withIndent('  ').convert(fullBackupData);
+      String fileName = 'smart_entry_backup_${DateTime.now().millisecondsSinceEpoch}.json';
+
+      if (kIsWeb) {
+        final bytes = utf8.encode(jsonString);
+        final blob = html.Blob([bytes]);
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        
+        final anchor = html.document.createElement('a') as html.AnchorElement
+          ..href = url
+          ..style.display = 'none'
+          ..download = fileName;
+          
+        html.document.body!.children.add(anchor);
+        anchor.click();
+        html.document.body!.children.remove(anchor);
+        html.Url.revokeObjectUrl(url);
+
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backup එක Download වීම ආරම්භ විය!'), backgroundColor: Colors.green));
+      }
+
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backup ලබා ගැනීමේදී දෝෂයක්: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() { _isLoadingBackup = false; });
+    }
+  }
+
+  // --- මුරපදය වෙනස් කිරීමේ Logic එක ---
   Future<void> _changePassword() async {
     if (_passwordFormKey.currentState!.validate()) {
       setState(() { _isLoadingPassword = true; });
-      
       String currentInput = _currentPasswordController.text.trim();
       String newInput = _newPasswordController.text.trim();
 
       try {
-        // 1. Database එකේ ඇති වත්මන් මුරපදය ලබා ගැනීම
-        DocumentSnapshot authDoc = await FirebaseFirestore.instance
-            .collection('GlobalSettings')
-            .doc('auth')
-            .get();
-
-        if (!authDoc.exists) {
-          // පළමු වතාවට හදනවා නම් (document එක නැත්නම්) කෙලින්ම update කරන්න ඉඩ දිය හැක.
-          // නමුත් ආරක්ෂාව සඳහා මෙතනදී "123" වැනි default එකක් Firestore එකට manually දමා තිබීම සුදුසුය.
-          throw Exception("මුරපද දත්ත සොයාගත නොහැක.");
-        }
-
+        DocumentSnapshot authDoc = await FirebaseFirestore.instance.collection('GlobalSettings').doc('auth').get();
+        if (!authDoc.exists) throw Exception("මුරපද දත්ත සොයාගත නොහැක.");
         String dbPassword = authDoc.get('password').toString();
 
-        // 2. පරිශීලකයා ගැසූ 'වත්මන් මුරපදය' නිවැරදිදැයි බැලීම
         if (currentInput != dbPassword) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('වත්මන් මුරපදය වැරදියි!'),
-              backgroundColor: Colors.red,
-            ));
-          }
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('වත්මන් මුරපදය වැරදියි!'), backgroundColor: Colors.red));
           setState(() { _isLoadingPassword = false; });
-          return; // එතනින් නවත්වන්න
+          return; 
         }
 
-        // 3. අලුත් මුරපදය Database එකේ Update කිරීම
-        await FirebaseFirestore.instance
-            .collection('GlobalSettings')
-            .doc('auth')
-            .set({
+        await FirebaseFirestore.instance.collection('GlobalSettings').doc('auth').set({
           'password': newInput,
           'updatedAt': FieldValue.serverTimestamp(),
         });
 
-        // Controllers clear කිරීම
         _currentPasswordController.clear();
         _newPasswordController.clear();
         _confirmPasswordController.clear();
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('මුරපදය සාර්ථකව යාවත්කාලීන විය!'),
-            backgroundColor: Colors.green,
-          ));
-        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('මුරපදය සාර්ථකව යාවත්කාලීන විය!'), backgroundColor: Colors.green));
       } catch (e) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('දෝෂයක්: $e')));
       } finally {
@@ -135,7 +172,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
   }
-
 
   // --- මාසික ගාස්තු සුරැකීම ---
   Future<void> _saveMonthlyRates() async {
@@ -157,9 +193,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _teaRateController.clear();
         _transportRateController.clear();
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('මාසික ගාස්තු සාර්ථකව සුරකින ලදි!')));
-        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('මාසික ගාස්තු සාර්ථකව සුරකින ලදි!')));
       } catch (e) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('දෝෂයක් මතු විය: $e')));
       } finally {
@@ -181,9 +215,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'updatedAt': FieldValue.serverTimestamp(),
         });
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('අමතර භාණ්ඩ මිල ගණන් සාර්ථකව යාවත්කාලීන විය!')));
-        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('අමතර භාණ්ඩ මිල ගණන් සාර්ථකව යාවත්කාලීන විය!')));
       } catch (e) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('දෝෂයක් මතු විය: $e')));
       } finally {
@@ -222,11 +254,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
-    // නව controllers dispose කිරීම
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
-
     _teaRateController.dispose();
     _transportRateController.dispose();
     _fert1PriceController.dispose();
@@ -246,9 +276,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // ============================================
-            // 🔥 අලුත් කොටස: පරිපාලක මුරපදය වෙනස් කිරීම
-            // ============================================
+            if (kIsWeb) ...[
+              Card(
+                color: Colors.blue.shade50,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.blue.shade200)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Database Backup (දත්ත සංරක්ෂණය)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                      const SizedBox(height: 8),
+                      const Text('ඔබගේ සියලුම දත්ත (.json) ගොනුවක් ලෙස ඔබගේ උපාංගයට සෘජුවම Download කරගන්න.', style: TextStyle(fontSize: 13, color: Colors.black87)),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton.icon(
+                          onPressed: _isLoadingBackup ? null : _exportDatabaseBackupWeb,
+                          icon: _isLoadingBackup 
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Icon(Icons.cloud_download),
+                          label: Text(_isLoadingBackup ? 'Backup සැකසෙමින් පවතී...' : 'Backup එක Download කරන්න', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Divider(),
+              const SizedBox(height: 16),
+            ],
+
             const Text('පරිපාලක මුරපදය වෙනස් කිරීම', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.redAccent)),
             const SizedBox(height: 12),
             Form(
@@ -261,7 +323,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     children: [
-                      // වත්මන් මුරපදය
                       TextFormField(
                         controller: _currentPasswordController,
                         obscureText: _obscureCurrent,
@@ -274,7 +335,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         validator: (val) => val!.isEmpty ? 'වත්මන් මුරපදය ඇතුළත් කරන්න' : null,
                       ),
                       const SizedBox(height: 12),
-                      // අලුත් මුරපදය
                       TextFormField(
                         controller: _newPasswordController,
                         obscureText: _obscureNew,
@@ -291,10 +351,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         },
                       ),
                       const SizedBox(height: 12),
-                      // අලුත් මුරපදය තහවුරු කිරීම
                       TextFormField(
                         controller: _confirmPasswordController,
-                        obscureText: _obscureNew, // use same eye icon state
+                        obscureText: _obscureNew, 
                         decoration: const InputDecoration(labelText: 'අලුත් මුරපදය තහවුරු කරන්න', border: OutlineInputBorder(), prefixIcon: Icon(Icons.check_circle_outline)),
                         validator: (val) {
                           if (val!.isEmpty) return 'මුරපදය තහවුරු කරන්න';
@@ -323,9 +382,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const Divider(),
             const SizedBox(height: 16),
             
-            // ============================================
-            // කොටස 01: ස්ථිර භාණ්ඩ මිල ගණන් (Global Settings)
-            // ============================================
             const Text('අමතර භාණ්ඩ මිල ගණන් (ස්ථිර)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Form(
@@ -401,9 +457,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const Divider(),
             const SizedBox(height: 16),
 
-            // ============================================
-            // කොටස 02: මාසික ගාස්තු සැකසුම් (Monthly Rates)
-            // ============================================
             const Text('මාසික ගාස්තු සැකසුම්', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Form(
@@ -477,9 +530,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 32),
             
-            // ============================================
-            // කොටස 03: මාසික ගාස්තු ලැයිස්තුව (Monthly Rates List)
-            // ============================================
             const Text('සුරැකි මාසික ගාස්තු ලැයිස්තුව', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             StreamBuilder<QuerySnapshot>(

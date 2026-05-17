@@ -1,204 +1,126 @@
-import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 class BillPdfService {
-  static Future<void> generateMonthlyInvoice({
+  static Future<void> printFastDotMatrix({
     required Map<String, dynamic> bill,
     required String customerName,
     required String refNumber,
   }) async {
     final pdf = pw.Document();
-    
-    // Web එකේදී fonts ප්‍රශ්නය ඇති නොවන්නට Google Fonts load කරගනිමු
-    final font = await PdfGoogleFonts.robotoRegular();
-    final fontBold = await PdfGoogleFonts.robotoBold();
 
-    String monthDisplay = bill['displayMonth'].toString().toUpperCase();
+    // Dot Matrix සඳහා ගැළපෙන Courier Font එක
+    final font = await PdfGoogleFonts.courierPrimeRegular();
 
     pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
-        // අලුත් font එක theme එකට ලබාදීම
-        theme: pw.ThemeData.withFont(
-          base: font,
-          bold: fontBold,
-        ),
-        header: (pw.Context context) => pw.Column(children: [
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                pw.Text('NALEEN SURANGA', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
-                pw.Text('Authorized green tea leaf dealers', style: const pw.TextStyle(fontSize: 9)),
-                pw.SizedBox(height: 5),
-                pw.Text('Address: Gangoda,Rakwana', style: const pw.TextStyle(fontSize: 8)),
-                pw.Text('Phone: 0758258544', style: const pw.TextStyle(fontSize: 8)),
-              ]),
-              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-                pw.Text('MONTHLY INVOICE', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
-                pw.Text(bill['displayMonth'], style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
-              ]),
-            ],
-          ),
-          pw.SizedBox(height: 10),
-          pw.Divider(thickness: 1),
-          pw.SizedBox(height: 8),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Customer: $refNumber - $customerName', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
-              pw.Text('UNIT RATE: Rs. ${bill['teaRate'].toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
-            ],
-          ),
-          pw.SizedBox(height: 8),
-        ]),
-        footer: (pw.Context context) => pw.Column(children: [
-          pw.Divider(thickness: 0.5, color: PdfColors.grey400),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Generated on: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600)),
-              pw.Text('Powered by OrbitView Innovations', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey800)),
-            ],
-          ),
-        ]),
-        build: (pw.Context context) => [
-          pw.Table(
-            border: pw.TableBorder.all(color: PdfColors.grey400),
-            defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
-            columnWidths: {
-              0: const pw.FlexColumnWidth(1),
-              1: const pw.FlexColumnWidth(1),
-              2: const pw.FlexColumnWidth(3.5),
-              3: const pw.FlexColumnWidth(1.5),
-            },
-            children: [
-              pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+      pw.Page(
+        pageFormat: PdfPageFormat.a5,
+        build: (pw.Context context) {
+          // --- ගණනය කිරීම් මෙතැන සිදු කරයි ---
+          double teaRate = (bill['teaRate'] ?? 0.0).toDouble();
+          double grossIncome = (bill['grossIncome'] ?? 0.0).toDouble();
+          double transportCost = (bill['transportCost'] ?? 0.0).toDouble();
+
+          double totalWeight = 0;
+          if (teaRate != 0) {
+            totalWeight = grossIncome / teaRate;
+          }
+          
+          double transRate = 0;
+          if (totalWeight > 0) {
+            transRate = transportCost / totalWeight;
+          }
+
+          // --- Widget එක Return කිරීම ආරම්භය ---
+          return pw.Container(
+            padding: const pw.EdgeInsets.all(10),
+            child: pw.DefaultTextStyle(
+              style: pw.TextStyle(font: font, fontSize: 9),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  _pdfCell('Date', b: true),
-                  _pdfCell('Weight', b: true),
-                  _pdfCell('Description', b: true),
-                  _pdfCell('Amount', b: true),
+                  // Heading Section
+                  pw.Center(child: pw.Text('NALEEN SURANGA', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold))),
+                  pw.Center(child: pw.Text('Authorized Green Leaf Dealer')),
+                  pw.Center(child: pw.Text('Gangoda, Rakwana')),
+                  pw.Center(child: pw.Text('Tel: 0713444934 / 0758258544')),
+                  pw.SizedBox(height: 5),
+                  pw.Text('=' * 65),
+                  
+                  pw.Text('Name: $customerName'.padRight(40) + 'Ref: $refNumber'),
+                  pw.Text('Month: ${bill['displayMonth']}'),
+                  pw.Text('Tea Rate: Rs.${teaRate.toStringAsFixed(2)} | Trans. Rate: Rs.${transRate.toStringAsFixed(2)}'),
+                  pw.Text('-' * 65),
+                  
+                  // Table Header
+                  pw.Row(children: [
+                    pw.Expanded(flex: 2, child: pw.Text('Date')),
+                    pw.Expanded(flex: 2, child: pw.Text('Qty(kg)')),
+                    pw.Expanded(flex: 4, child: pw.Text('Item Desc')),
+                    pw.Expanded(flex: 2, child: pw.Text('I.Qty')),
+                    pw.Expanded(flex: 2, child: pw.Text('Amount')),
+                  ]),
+                  pw.Text('-' * 65),
+
+                  // Table Data Rows
+                  ...(bill['tableRows'] as List).map((row) {
+                    List items = row['items'];
+                    if (items.isEmpty) {
+                      return pw.Row(children: [
+                        pw.Expanded(flex: 2, child: pw.Text(row['date'])),
+                        pw.Expanded(flex: 2, child: pw.Text(row['weight'].toStringAsFixed(1))),
+                        pw.Expanded(flex: 4, child: pw.Text('-')),
+                        pw.Expanded(flex: 2, child: pw.Text('-')),
+                        pw.Expanded(flex: 2, child: pw.Text('-')),
+                      ]);
+                    } else {
+                      return pw.Column(
+                        children: items.map((item) {
+                          bool isFirst = items.indexOf(item) == 0;
+                          String fullDesc = item['desc'].toString();
+                          String descOnly = fullDesc.split(' (')[0];
+                          String qtyOnly = fullDesc.contains('(') 
+                              ? fullDesc.split('(')[1].split(')')[0] 
+                              : '-';
+
+                          return pw.Row(children: [
+                            pw.Expanded(flex: 2, child: pw.Text(isFirst ? row['date'] : '')),
+                            pw.Expanded(flex: 2, child: pw.Text(isFirst ? row['weight'].toStringAsFixed(1) : '')),
+                            pw.Expanded(flex: 4, child: pw.Text(descOnly)),
+                            pw.Expanded(flex: 2, child: pw.Text(qtyOnly)),
+                            pw.Expanded(flex: 2, child: pw.Text(item['amt'].toStringAsFixed(2))),
+                          ]);
+                        }).toList()
+                      );
+                    }
+                  }).toList(),
+
+                  pw.Text('-' * 65),
+                  
+                  // Summary Section
+                  pw.Text('GROSS INCOME    : Rs. ${grossIncome.toStringAsFixed(2)}'),
+                  pw.Text('TRANSPORT COST  : Rs. ${transportCost.toStringAsFixed(2)}'),
+                  pw.Text('OTHER DEDUCTIONS: Rs. ${(bill['otherCosts'] ?? 0.0).toStringAsFixed(2)}'),
+                  if ((bill['previousArrears'] ?? 0.0) > 0)
+                    pw.Text('PREV. ARREARS   : Rs. ${(bill['previousArrears']).toStringAsFixed(2)}'),
+                  
+                  pw.Text('=' * 65),
+                  pw.Text('NET PAYABLE     : Rs. ${(bill['netPayable'] ?? 0.0).toStringAsFixed(2)}', 
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
+                  pw.Text('=' * 65),
+                  
+                  pw.SizedBox(height: 10),
+                  pw.Center(child: pw.Text('THANK YOU!')),
+                  pw.Center(child: pw.Text('Powered by OrbitView Innovations', style: pw.TextStyle(fontSize: 7))),
                 ],
               ),
-              ...(bill['tableRows'] as List).map((row) {
-                List<dynamic> items = row['items'];
-                return pw.TableRow(
-                  children: [
-                    _pdfCell(row['date']),
-                    _pdfCell(row['weight'] > 0 ? row['weight'].toStringAsFixed(1) : '-'),
-                    pw.Column(
-                      children: items.isEmpty 
-                        ? [_pdfInternalCell('-')] 
-                        : items.map((i) => _pdfInternalCell(_toEng(i['desc']), align: pw.TextAlign.left)).toList(),
-                    ),
-                    pw.Column(
-                      children: items.isEmpty 
-                        ? [_pdfInternalCell('-')] 
-                        : items.map((i) => _pdfInternalCell(i['amt'].toStringAsFixed(2), align: pw.TextAlign.right)).toList(),
-                    ),
-                  ],
-                );
-              }),
-            ],
-          ),
-          
-          pw.SizedBox(height: 30),
-
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Padding(
-                padding: const pw.EdgeInsets.only(left: 20, bottom: 10),
-                child: bill['netPayable'] < 0
-                    ? _buildStamp('BALANCE DUE\n$monthDisplay', PdfColors.red700)
-                    : _buildStamp('PAID\n$monthDisplay', PdfColors.green700),
-              ),
-
-              pw.SizedBox(
-                width: 220,
-                child: pw.Column(children: [
-                  _pwRow('Gross Income:', 'Rs. ${bill['grossIncome'].toStringAsFixed(2)}', isBold: true),
-                  _pwRow('Transport Cost:', '- Rs. ${bill['transportCost'].toStringAsFixed(2)}'),
-                  _pwRow('Goods & Advance:', '- Rs. ${bill['otherCosts'].toStringAsFixed(2)}'),
-                  pw.Divider(thickness: 0.5),
-                  _pwRow('Total Deductions:', '- Rs. ${bill['totalDeductions'].toStringAsFixed(2)}', color: PdfColors.red700),
-                  if (bill['previousArrears'] > 0)
-                    _pwRow('Previous Arrears:', '- Rs. ${bill['previousArrears'].toStringAsFixed(2)}', color: PdfColors.red700),
-                  pw.Divider(thickness: 1.5),
-                  _pwRow('Net Payable:', 'Rs. ${bill['netPayable'].toStringAsFixed(2)}', 
-                    isBold: true, 
-                    fontSize: 13, 
-                    color: bill['netPayable'] < 0 ? PdfColors.red700 : PdfColors.green800
-                  ),
-                ]),
-              ),
-            ],
-          ),
-        ],
+            ),
+          );
+        },
       ),
     );
 
-    // Web එකේදී print කිරීමට නම් මේ විදිහට භාවිතා කරන්න
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
-      name: '${refNumber}_Invoice_${bill['displayMonth']}.pdf',
-    );
-  }
-
-  static pw.Widget _buildStamp(String label, PdfColor color) {
-    return pw.Transform.rotate(
-      angle: -0.15,
-      child: pw.Container(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-        decoration: pw.BoxDecoration(
-          border: pw.Border.all(color: color, width: 2.5),
-          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-        ),
-        child: pw.Text(
-          label,
-          textAlign: pw.TextAlign.center,
-          style: pw.TextStyle(
-            color: color,
-            fontWeight: pw.FontWeight.bold,
-            fontSize: 12,
-          ),
-        ),
-      ),
-    );
-  }
-
-  static pw.Widget _pdfCell(String txt, {bool b = false}) => pw.Padding(
-      padding: const pw.EdgeInsets.all(5),
-      child: pw.Text(txt, textAlign: pw.TextAlign.center, style: pw.TextStyle(fontSize: 9, fontWeight: b ? pw.FontWeight.bold : pw.FontWeight.normal)));
-
-  static pw.Widget _pdfInternalCell(String txt, {pw.TextAlign align = pw.TextAlign.center}) => pw.Container(
-        width: double.infinity,
-        padding: const pw.EdgeInsets.all(5),
-        decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5))),
-        child: pw.Text(txt, textAlign: align, style: const pw.TextStyle(fontSize: 8)),
-      );
-
-  static pw.Widget _pwRow(String label, String value, {bool isBold = false, double fontSize = 10, PdfColor? color}) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 2),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(label, style: pw.TextStyle(fontSize: fontSize, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal, color: color)),
-          pw.Text(value, style: pw.TextStyle(fontSize: fontSize, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal, color: color)),
-        ],
-      ),
-    );
-  }
-
-  static String _toEng(String item) {
-    return item.replaceAll('පොහොර', 'Fertilizer').replaceAll('තේ පැකට්', 'Tea Packet').replaceAll('අත්තිකාරම්', 'Advance');
+    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
   }
 }
