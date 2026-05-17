@@ -328,10 +328,10 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         pw.Center(child: pw.Text('NALEEN SURANGA', style: pw.TextStyle(font: font, fontSize: 14, fontWeight: pw.FontWeight.bold))),
         pw.Center(child: pw.Text('Authorized Green Dealer - Gangoda, Rakwana', style: pw.TextStyle(font: font, fontSize: 9))),
         pw.Center(child: pw.Text('Tel: 0713444934 / 0758258544', style: pw.TextStyle(font: font, fontSize: 9))),
-        pw.Text('=' * 67, style: pw.TextStyle(font: font)),
+        pw.Text('=' * 51, style: pw.TextStyle(font: font)),
         pw.Text('Name : ${item['name'].toString().padRight(35)} Ref: ${item['ref']}', style: pw.TextStyle(font: font, fontSize: 10)),
         pw.Text('Month: ${b['displayMonth']}', style: pw.TextStyle(font: font, fontSize: 10)),
-        pw.Text('=' * 67, style: pw.TextStyle(font: font)),
+        pw.Text('=' * 51, style: pw.TextStyle(font: font)),
         // Header: Day(5), Description(22), Qty(12), Price(14), Total(14) = 67
         pw.Text('Day  Description            Qty          Price            Total', style: pw.TextStyle(font: font, fontSize: 9)),
         pw.Text('---  --------------------  ----------  ------------  --------------', style: pw.TextStyle(font: font, fontSize: 9)),
@@ -358,14 +358,14 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         _pdfSumRow('Gross Income (Tea)', b['grossIncome'].toStringAsFixed(2), font),
         _pdfSumRow('Transport Deductions', '-${b['transportCost'].toStringAsFixed(2)}', font),
         _pdfSumRow('Other Deductions', '-${b['otherCosts'].toStringAsFixed(2)}', font),
-        pw.Text(' ' * 53 + '-' * 14, style: pw.TextStyle(font: font)),
+        pw.Text('=' * 51, style: pw.TextStyle(font: font)),
         _pdfSumRow('NET PAYABLE (Rs.)', b['netPayable'].toStringAsFixed(2), font, bold: true),
-        pw.Text('=' * 67, style: pw.TextStyle(font: font)),
+        pw.Text('=' * 51, style: pw.TextStyle(font: font)),
       ],
     );
   }
 
   pw.Widget _pdfSumRow(String label, String val, pw.Font font, {bool bold = false}) {
-    return pw.Text(label.padRight(53) + val.padLeft(14), style: pw.TextStyle(font: font, fontSize: 10, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal));
+    return pw.Text(label.padRight(47) + val.padLeft(14), style: pw.TextStyle(font: font, fontSize: 10, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal));
   }
 }
