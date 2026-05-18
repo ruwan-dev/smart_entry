@@ -54,7 +54,7 @@ class _TeaCollectionAppState extends State<TeaCollectionApp> {
       // මේක අනිවාර්යයෙන්ම දාන්න (එතකොට තමයි ඕනම Screen එකක ඉඳන් Popup එක එන්නෙ)
       navigatorKey: globalNavigatorKey,
       
-      title: 'Tea Collection App',
+      title: 'Smart Entry',
       theme: appTheme.copyWith(
         textTheme: GoogleFonts.notoSansSinhalaTextTheme(appTheme.textTheme),
         primaryTextTheme: GoogleFonts.notoSansSinhalaTextTheme(appTheme.primaryTextTheme),
