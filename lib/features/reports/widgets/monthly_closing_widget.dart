@@ -72,7 +72,6 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         var monthlyEntries = entries.docs.where((doc) => doc['date'].toString().startsWith(searchKey)).toList();
         if (monthlyEntries.isEmpty) continue;
 
-        // **දින අනුපිළිවෙලට (Ascending) සෝට් කිරීම**
         monthlyEntries.sort((a, b) => a['date'].toString().compareTo(b['date'].toString()));
 
         double totalW = 0, totalAdv = 0, f1Q = 0, f2Q = 0, t1Q = 0, t2Q = 0;
@@ -129,21 +128,9 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
     final pdf = pw.Document();
     final font = await PdfGoogleFonts.courierPrimeRegular();
 
-    double grandWeight = 0, grandGross = 0, grandTrans = 0, grandAdv = 0, grandF1Q = 0, grandF1A = 0, grandF2Q = 0, grandF2A = 0, grandT1Q = 0, grandT1A = 0, grandT2Q = 0, grandT2A = 0, grandNet = 0;
-    double grandPositiveNet = 0, grandNegativeNet = 0;
-
     try {
       for (var item in _billingList) {
         var b = item['bill'];
-        double net = b['netPayable'];
-        if (net > 0) grandPositiveNet += net; else grandNegativeNet += net.abs();
-
-        grandGross += b['grossIncome']; grandTrans += b['transportCost']; grandNet += net;
-        grandAdv += b['advTotal']; grandF1Q += b['f1Qty']; grandF1A += b['f1Total'];
-        grandF2Q += b['f2Qty']; grandF2A += b['f2Total']; grandT1Q += b['t1Qty']; grandT1A += b['t1Total'];
-        grandT2Q += b['t2Qty']; grandT2A += b['t2Total'];
-        for (var r in b['tableRows']) grandWeight += r['weight'];
-
         if (item['isFinalized'] == false) {
           String monthKey = b['displayMonth'].toString().replaceAll(' ', '-');
           await FirebaseFirestore.instance.collection('FinalizedBills').doc("${item['customerId']}_$monthKey").set({
@@ -151,23 +138,26 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
             'billData': b, 'finalizedAt': FieldValue.serverTimestamp(),
           });
         }
-        pdf.addPage(pw.Page(build: (pw.Context context) => _buildPdfBill(item, font)));
+        
+        pdf.addPage(
+          pw.Page(
+            pageFormat: PdfPageFormat.a5, // A5 Size
+            margin: const pw.EdgeInsets.all(20),
+            build: (pw.Context context) => _buildPdfBill(item, font),
+          ),
+        );
       }
 
-      String summaryId = "$_currentYear-${DateFormat('MMMM').format(DateTime(_currentYear, _selectedMonth))}";
-      await FirebaseFirestore.instance.collection('MonthlySummaries').doc(summaryId).set({
-        'totalWeight': grandWeight, 'totalGross': grandGross, 'totalTransport': grandTrans,
-        'totalAdvance': grandAdv, 'totalF1Qty': grandF1Q, 'totalF1Amt': grandF1A,
-        'totalF2Qty': grandF2Q, 'totalF2Amt': grandF2A, 'totalT1Qty': grandT1Q, 'totalT1Amt': grandT1A,
-        'totalT2Qty': grandT2Q, 'totalT2Amt': grandT2A, 'totalNet': grandNet,
-        'totalPositiveNet': grandPositiveNet, 'totalNegativeNet': grandNegativeNet,
-        'finalizedAt': FieldValue.serverTimestamp(),
-      });
-
-      await Printing.layoutPdf(onLayout: (format) async => pdf.save(), name: 'Monthly_Bills.pdf');
+      String monthName = DateFormat('MMMM').format(DateTime(_currentYear, _selectedMonth));
+      String customFileName = "${_currentYear}_${monthName}_Monthly_Bills.pdf";
+      
+      await Printing.layoutPdf(onLayout: (format) async => pdf.save(), name: customFileName);
       _checkStatusAndCalculate();
-    } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'))); }
-    finally { setState(() => _isCalculating = false); }
+    } catch (e) { 
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'))); 
+    } finally { 
+      setState(() => _isCalculating = false); 
+    }
   }
 
   @override
@@ -316,56 +306,74 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
     );
   }
 
-  // --- PDF Build Logic (Width 67 - NAILED ALIGNMENT) ---
+  // --- PDF Build Logic (A5 Optimized Center Column Alignment) ---
   pw.Widget _buildPdfBill(Map<String, dynamic> item, pw.Font font) {
     var b = item['bill'];
     double totalW = 0;
     for (var r in b['tableRows']) totalW += (r['weight'] ?? 0);
 
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Center(child: pw.Text('NALEEN SURANGA', style: pw.TextStyle(font: font, fontSize: 14, fontWeight: pw.FontWeight.bold))),
-        pw.Center(child: pw.Text('Authorized Green Dealer - Gangoda, Rakwana', style: pw.TextStyle(font: font, fontSize: 9))),
-        pw.Center(child: pw.Text('Tel: 0713444934 / 0758258544', style: pw.TextStyle(font: font, fontSize: 9))),
-        pw.Text('=' * 51, style: pw.TextStyle(font: font)),
-        pw.Text('Name : ${item['name'].toString().padRight(35)} Ref: ${item['ref']}', style: pw.TextStyle(font: font, fontSize: 10)),
-        pw.Text('Month: ${b['displayMonth']}', style: pw.TextStyle(font: font, fontSize: 10)),
-        pw.Text('=' * 51, style: pw.TextStyle(font: font)),
-        // Header: Day(5), Description(22), Qty(12), Price(14), Total(14) = 67
-        pw.Text('Day  Description            Qty          Price            Total', style: pw.TextStyle(font: font, fontSize: 9)),
-        pw.Text('---  --------------------  ----------  ------------  --------------', style: pw.TextStyle(font: font, fontSize: 9)),
-        ... (b['tableRows'] as List).map((row) {
-          String day = row['date'].toString().split('-').last;
-          double w = (row['weight'] ?? 0.0).toDouble();
-          List items = row['items'] ?? [];
-          if (w <= 0 && items.isEmpty) return pw.SizedBox();
+    // A5 පළලට ගැලපෙන සේ Padding අගයන් වෙනස් කරන ලදී (මුළු අගය 54 ක් වන සේ)
+    return pw.Center(
+      child: pw.Column(
+        mainAxisSize: pw.MainAxisSize.min,
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Text('NALEEN SURANGA', style: pw.TextStyle(font: font, fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.Text('Authorized Green Dealer - Gangoda, Rakwana', style: pw.TextStyle(font: font, fontSize: 8)),
+          pw.Text('Tel: 0713444934 / 0758258544', style: pw.TextStyle(font: font, fontSize: 8)),
+          pw.Text('=' * 54, style: pw.TextStyle(font: font, fontSize: 8)),
           
-          return pw.Column(children: [
-            if (w > 0) 
-              pw.Text('${day.padRight(5)}${'Tea Leaves'.padRight(22)}${(w.toStringAsFixed(1) + " Kg").padLeft(12)}${b['teaRate'].toStringAsFixed(2).padLeft(14)}${(w * b['teaRate']).toStringAsFixed(2).padLeft(14)}', style: pw.TextStyle(font: font, fontSize: 9)),
+          pw.Text('Name : ${item['name'].toString()} | Ref: ${item['ref']}', style: pw.TextStyle(font: font, fontSize: 9)),
+          pw.Text('Month: ${b['displayMonth']}', style: pw.TextStyle(font: font, fontSize: 9)),
+          pw.Text('=' * 54, style: pw.TextStyle(font: font, fontSize: 8)),
+          
+          // Table Header (A5 පළලට ගැලපෙන පරතරය)
+          pw.Text('Day  Description          Qty        Price         Total', style: pw.TextStyle(font: font, fontSize: 8)),
+          pw.Text('---  ------------------  --------  ----------  ----------', style: pw.TextStyle(font: font, fontSize: 8)),
+          
+          ... (b['tableRows'] as List).map((row) {
+            String day = row['date'].toString().split('-').last;
+            double w = (row['weight'] ?? 0.0).toDouble();
+            List items = row['items'] ?? [];
+            if (w <= 0 && items.isEmpty) return pw.SizedBox();
             
-            ... items.map((it) => pw.Text(
-              '${(w > 0 ? "" : day).padRight(5)}${it['desc'].toString().padRight(22)}${(it['qty'] > 0 ? it['qty'].toStringAsFixed(0) : "-").padLeft(12)}${(it['uPrice'] > 0 ? it['uPrice'].toStringAsFixed(2) : "-").padLeft(14)}${it['amt'].toStringAsFixed(2).padLeft(14)}', 
-              style: pw.TextStyle(font: font, fontSize: 9)
-            )),
-            pw.Text('-' * 67, style: pw.TextStyle(font: font, fontSize: 8)),
-          ]);
-        }).toList(),
-        pw.SizedBox(height: 5),
-        // Summary Row: Label(53) + Value(14) = 67 (දැන් උඩ Table එකේ Total Column එකට හරියටම Align වෙනවා)
-        _pdfSumRow('Total Tea Leaves Weight', '${totalW.toStringAsFixed(1)} Kg', font),
-        _pdfSumRow('Gross Income (Tea)', b['grossIncome'].toStringAsFixed(2), font),
-        _pdfSumRow('Transport Deductions', '-${b['transportCost'].toStringAsFixed(2)}', font),
-        _pdfSumRow('Other Deductions', '-${b['otherCosts'].toStringAsFixed(2)}', font),
-        pw.Text('=' * 51, style: pw.TextStyle(font: font)),
-        _pdfSumRow('NET PAYABLE (Rs.)', b['netPayable'].toStringAsFixed(2), font, bold: true),
-        pw.Text('=' * 51, style: pw.TextStyle(font: font)),
-      ],
+            return pw.Column(children: [
+              if (w > 0) 
+                pw.Text('${day.padRight(5)}${'Tea Leaves'.padRight(18)}${(w.toStringAsFixed(1)).padLeft(8)}${b['teaRate'].toStringAsFixed(2).padLeft(12)}${(w * b['teaRate']).toStringAsFixed(2).padLeft(12)}', style: pw.TextStyle(font: font, fontSize: 8)),
+              
+              ... items.map((it) => pw.Text(
+                '${(w > 0 ? "" : day).padRight(5)}${it['desc'].toString().padRight(18)}${(it['qty'] > 0 ? it['qty'].toStringAsFixed(0) : "-").padLeft(8)}${(it['uPrice'] > 0 ? it['uPrice'].toStringAsFixed(2) : "-").padLeft(12)}${it['amt'].toStringAsFixed(2).padLeft(12)}', 
+                style: pw.TextStyle(font: font, fontSize: 8)
+              )),
+            ]);
+          }).toList(),
+          
+          pw.Text('-' * 54, style: pw.TextStyle(font: font, fontSize: 8)),
+          _pdfSumRow('Total Tea Leaves Weight', '${totalW.toStringAsFixed(1)} Kg', font),
+          _pdfSumRow('Gross Income (Tea)', b['grossIncome'].toStringAsFixed(2), font),
+          _pdfSumRow('Transport Deductions', '-${b['transportCost'].toStringAsFixed(2)}', font),
+          _pdfSumRow('Other Deductions', '-${itOtherCosts(b).toStringAsFixed(2)}', font),
+          pw.Text('=' * 54, style: pw.TextStyle(font: font, fontSize: 8)),
+          _pdfSumRow('NET PAYABLE (Rs.)', b['netPayable'].toStringAsFixed(2), font, bold: true),
+          pw.Text('=' * 54, style: pw.TextStyle(font: font, fontSize: 8)),
+
+          pw.SizedBox(height: 12),
+          pw.Text('Thank You!', style: pw.TextStyle(font: font, fontSize: 9, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 3),
+          pw.Text(
+            'Powered by OrbitView Innovations',
+            style: pw.TextStyle(font: font, fontSize: 7, color: PdfColors.grey700, fontStyle: pw.FontStyle.italic),
+          ),
+        ],
+      ),
     );
   }
 
+  // Helper to get total other costs safely
+  double itOtherCosts(dynamic b) => (b['otherCosts'] ?? 0.0).toDouble();
+
   pw.Widget _pdfSumRow(String label, String val, pw.Font font, {bool bold = false}) {
-    return pw.Text(label.padRight(47) + val.padLeft(14), style: pw.TextStyle(font: font, fontSize: 10, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal));
+    // A5 පළලට ගැලපෙන සේ padRight අගය 40 ලෙස වෙනස් කරන ලදී
+    return pw.Text(label.padRight(40) + val.padLeft(14), style: pw.TextStyle(font: font, fontSize: 9, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal));
   }
 }

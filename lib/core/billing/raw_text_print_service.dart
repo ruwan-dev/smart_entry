@@ -93,7 +93,7 @@ class RawTextPrintService {
     txt.writeln('=' * totalWidth);
     
     txt.writeln('\n' + center('THANK YOU!', totalWidth));
-    txt.writeln(center('System by OrbitView Innovations', totalWidth));
+    txt.writeln(center('Powered by OrbitView Innovations', totalWidth));
     txt.writeln('\n\n\n\n'); 
     return txt.toString();
   }

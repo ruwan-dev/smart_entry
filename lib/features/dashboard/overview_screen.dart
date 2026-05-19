@@ -397,7 +397,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
       }
     } catch (e) {} 
     
-    String summaryTitle = monthName.isNotEmpty ? "$monthName මාසික ව්‍යාපාරික සාරාංශය" : "මාසික ව්‍යාපාරික සාරාංශය";
+    String summaryTitle = monthName.isNotEmpty ? "$monthName මාසික සාරාංශය" : "මාසික සාරාංශය";
 
     var s = _latestSummaryData!; 
     
@@ -508,7 +508,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                   
                   SizedBox(width: w3, child: _miniTile(label: "අයවියයුතු මුදල", value: "Rs. ${currencyF.format(cNegNet)}", icon: Icons.arrow_circle_down, color: Colors.redAccent, currentVal: cNegNet, prevVal: pNegNet, invertTrend: true)), 
                   SizedBox(width: w3, child: _miniTile(label: "ලබා දිය යුතු මුදල", value: "Rs. ${currencyF.format(cPosNet)}", icon: Icons.arrow_circle_up, color: Colors.teal, currentVal: cPosNet, prevVal: pPosNet)), 
-                  SizedBox(width: w3, child: _miniTile(label: "ශුද්ධ ශේෂය", value: "Rs. ${currencyF.format(cNet)}", icon: Icons.account_balance, color: Colors.blue, currentVal: cNet, prevVal: pNet)),
+                  SizedBox(width: w3, child: _miniTile(label: "ලාභ/අලාභය", value: "Rs. ${currencyF.format(cNet)}", icon: Icons.account_balance, color: Colors.blue, currentVal: cNet, prevVal: pNet)),
                 ]
               )
             ]

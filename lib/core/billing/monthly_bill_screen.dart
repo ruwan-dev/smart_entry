@@ -97,7 +97,6 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
           String date = data['date'].toString();
           double netW = _parseDouble(data['netWeight']);
           
-          // Firestore image එකේ තිබූ Fields
           double f1Qty = _parseDouble(data['fertilizer1Qty']);
           double f1Price = _parseDouble(data['fertilizer1UnitPrice']);
           double f2Qty = _parseDouble(data['fertilizer2Qty']);
@@ -117,7 +116,6 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
           if (!dailyData.containsKey(date)) dailyData[date] = {'weight': 0.0, 'items': []};
           dailyData[date]!['weight'] += netW;
 
-          // List එකට Item එකතු කිරීම
           if (f1Qty > 0) dailyData[date]!['items'].add({'desc': 'Fertilizer 01', 'qty': f1Qty, 'uPrice': f1Price, 'amt': f1Qty * f1Price});
           if (f2Qty > 0) dailyData[date]!['items'].add({'desc': 'Fertilizer 02', 'qty': f2Qty, 'uPrice': f2Price, 'amt': f2Qty * f2Price});
           if (tp1Qty > 0) dailyData[date]!['items'].add({'desc': 'Tea Packet 01', 'qty': tp1Qty, 'uPrice': tp1Price, 'amt': tp1Qty * tp1Price});
@@ -189,7 +187,7 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
             padding: const EdgeInsets.all(15),
             child: Column(children: [
               const Text('NALEEN SURANGA', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const Text('Authorized Green Dealer', style: TextStyle(fontSize: 10)),
+              const Text('Authorized Green Tea Dealer', style: TextStyle(fontSize: 10)),
               const Divider(height: 30),
               
               Table(
@@ -245,33 +243,25 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
               const Center(child: Text('Powered by OrbitView Innovations', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold))),
               const SizedBox(height: 15),
 
-              Row(children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => BillPdfService.printFastDotMatrix(
+              // මෙහිදී PDF බොත්තම ඉවත් කර DOT MATRIX PRINT බොත්තම පමණක් තබා ඇත
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    bool ok = await RawTextPrintService.printToWindows(
                       bill: bill, customerName: widget.customerName, refNumber: widget.refNumber
-                    ), 
-                    icon: const Icon(Icons.picture_as_pdf), 
-                    label: const Text('PDF'), 
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey, foregroundColor: Colors.white, minimumSize: const Size(0, 50))
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 2, 
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      bool ok = await RawTextPrintService.printToWindows(
-                        bill: bill, customerName: widget.customerName, refNumber: widget.refNumber
-                      );
-                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? 'මුද්‍රණය සඳහා යවන ලදී' : 'මුද්‍රණ දෝෂයකි'), backgroundColor: ok ? Colors.green : Colors.red));
-                    }, 
-                    icon: const Icon(Icons.bolt), 
-                    label: const Text('DOT MATRIX PRINT'), 
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white, minimumSize: const Size(0, 50))
+                    );
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? 'මුද්‍රණය සඳහා යවන ලදී' : 'මුද්‍රණ දෝෂයකි'), backgroundColor: ok ? Colors.green : Colors.red));
+                  }, 
+                  icon: const Icon(Icons.bolt), 
+                  label: const Text('DOT MATRIX PRINT'), 
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black, 
+                    foregroundColor: Colors.white, 
+                    minimumSize: const Size(0, 50)
                   )
                 ),
-              ]),
+              ),
             ]),
           ),
         ],
