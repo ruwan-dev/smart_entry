@@ -84,42 +84,47 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
               builder: (context, snapshot) {
                 if (snapshot.hasData) _allCustomers = snapshot.data!.docs;
 
-                return Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: TextFormField(
-                        controller: _refController,
-                        decoration: const InputDecoration(labelText: 'අංකය', border: OutlineInputBorder()),
-                        keyboardType: TextInputType.number,
-                        onChanged: (value) {
-                          final match = _allCustomers.where((c) => c['refNumber'] == value.trim()).toList();
-                          setState(() {
-                            _selectedCustomerId = match.isNotEmpty ? match.first.id : null;
-                          });
-                        },
-                      ),
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 800),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _refController,
+                            decoration: const InputDecoration(labelText: 'අංකය', border: OutlineInputBorder()),
+                            keyboardType: TextInputType.number,
+                            onChanged: (value) {
+                              final match = _allCustomers.where((c) => c['refNumber'] == value.trim()).toList();
+                              setState(() {
+                                _selectedCustomerId = match.isNotEmpty ? match.first.id : null;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 3,
+                          child: DropdownButtonFormField<String>(
+                            decoration: const InputDecoration(labelText: 'නම', border: OutlineInputBorder()),
+                            isExpanded: true,
+                            value: _selectedCustomerId,
+                            items: _allCustomers.map((doc) {
+                              return DropdownMenuItem(value: doc.id, child: Text(doc['name']));
+                            }).toList(),
+                            onChanged: (val) {
+                              setState(() {
+                                _selectedCustomerId = val;
+                                final customer = _allCustomers.firstWhere((c) => c.id == val);
+                                _refController.text = customer['refNumber'];
+                              });
+                            },
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 3,
-                      child: DropdownButtonFormField<String>(
-                        decoration: const InputDecoration(labelText: 'නම', border: OutlineInputBorder()),
-                        isExpanded: true,
-                        value: _selectedCustomerId,
-                        items: _allCustomers.map((doc) {
-                          return DropdownMenuItem(value: doc.id, child: Text(doc['name']));
-                        }).toList(),
-                        onChanged: (val) {
-                          setState(() {
-                            _selectedCustomerId = val;
-                            final customer = _allCustomers.firstWhere((c) => c.id == val);
-                            _refController.text = customer['refNumber'];
-                          });
-                        },
-                      ),
-                    ),
-                  ],
+                  ),
                 );
               },
             ),
@@ -127,13 +132,18 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
             color: Theme.of(context).primaryColor.withOpacity(0.1),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(icon: const Icon(Icons.arrow_back_ios), onPressed: () => _changeMonth(-1)),
-                Text(monthName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                IconButton(icon: const Icon(Icons.arrow_forward_ios), onPressed: () => _changeMonth(1)),
-              ],
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(icon: const Icon(Icons.arrow_back_ios), onPressed: () => _changeMonth(-1)),
+                    Text(monthName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    IconButton(icon: const Icon(Icons.arrow_forward_ios), onPressed: () => _changeMonth(1)),
+                  ],
+                ),
+              ),
             ),
           ),
           Expanded(
@@ -173,76 +183,105 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                   }
                 }
 
-                return GridView.builder(
-                  padding: const EdgeInsets.all(8.0),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 7, 
-                    crossAxisSpacing: 4, 
-                    mainAxisSpacing: 6, 
-                    childAspectRatio: 0.55, 
-                  ),
-                  itemCount: DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0).day,
-                  itemBuilder: (context, index) {
-                    int day = index + 1;
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    double crossAxisSpacing = 4.0;
                     
-                    var dayData = totals[day] ?? {'weight': 0.0, 'advance': 0.0, 'fert': 0.0, 'tea': 0.0};
-                    double weight = dayData['weight']!;
-                    double advance = dayData['advance']!;
-                    double fert = dayData['fert']!;
-                    double tea = dayData['tea']!;
+                    // Make grid responsive based on screen width
+                    int crossAxisCount = 7;
+                    if (constraints.maxWidth >= 1200) {
+                      crossAxisCount = 14;
+                    } else if (constraints.maxWidth >= 800) {
+                      crossAxisCount = 10;
+                    } else if (constraints.maxWidth >= 600) {
+                      crossAxisCount = 7;
+                    } else if (constraints.maxWidth >= 400) {
+                      crossAxisCount = 5;
+                    } else {
+                      crossAxisCount = 4;
+                    }
+
+                    double paddingHorizontal = 16.0; 
                     
-                    bool hasData = weight > 0 || advance > 0 || fert > 0 || tea > 0;
+                    double totalAvailableWidth = constraints.maxWidth - paddingHorizontal - (crossAxisSpacing * (crossAxisCount - 1));
+                    double itemWidth = totalAvailableWidth / crossAxisCount;
+                    
+                    // සාමාන්‍ය ෆෝන් එකක දත්ත පේළි 4ම පෙන්වීම සඳහා උස (Height) 130.0 ක් ලෙස සකසා ඇත.
+                    double itemHeight = 130.0; 
+                    double responsiveAspectRatio = itemWidth / itemHeight;
 
-                    // --- අනාගත දින පරීක්ෂාව ---
-                    DateTime cellDate = DateTime(_selectedMonth.year, _selectedMonth.month, day);
-                    bool isFuture = cellDate.isAfter(today);
-
-                    return InkWell(
-                      // මෙතැනින් existingEntryId යැවීම ඉවත් කර ඇත
-                      onTap: isFuture ? null : () => _onDateTapped(day),
-                      child: Container(
-                        padding: const EdgeInsets.all(2.0),
-                        decoration: BoxDecoration(
-                          color: isFuture 
-                              ? Colors.grey.shade200 
-                              : (hasData ? Theme.of(context).primaryColor.withOpacity(0.08) : Colors.white),
-                          borderRadius: BorderRadius.circular(8.0),
-                          border: Border.all(
-                            color: isFuture 
-                                ? Colors.grey.shade300 
-                                : (hasData ? Theme.of(context).primaryColor : Colors.grey.shade300)
-                          ),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 2),
-                            Text(
-                              day.toString(), 
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold, 
-                                color: isFuture 
-                                    ? Colors.grey.shade400 
-                                    : (hasData ? Colors.black87 : Colors.grey)
-                              )
-                            ),
-                            const Spacer(),
-                            
-                            if (weight > 0) 
-                              _buildAlignedRow(Icons.eco, Colors.green, weight.toStringAsFixed(1)),
-                            if (advance > 0) 
-                              _buildAlignedRow(Icons.money, Colors.blue, NumberFormat.compact().format(advance)),
-                            if (fert > 0) 
-                              _buildAlignedRow(Icons.eco, const Color.fromARGB(255, 60, 6, 6), fert.toStringAsFixed(0)), 
-                            if (tea > 0) 
-                              _buildAlignedRow(Icons.local_cafe, Colors.orange, tea.toStringAsFixed(0)),
-                              
-                            const SizedBox(height: 2),
-                          ],
-                        ),
+                    return GridView.builder(
+                      padding: const EdgeInsets.all(8.0),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount, 
+                        crossAxisSpacing: crossAxisSpacing, 
+                        mainAxisSpacing: 6, 
+                        childAspectRatio: responsiveAspectRatio, 
                       ),
+                      itemCount: DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0).day,
+                      itemBuilder: (context, index) {
+                        int day = index + 1;
+                        
+                        var dayData = totals[day] ?? {'weight': 0.0, 'advance': 0.0, 'fert': 0.0, 'tea': 0.0};
+                        double weight = dayData['weight']!;
+                        double advance = dayData['advance']!;
+                        double fert = dayData['fert']!;
+                        double tea = dayData['tea']!;
+                        
+                        bool hasData = weight > 0 || advance > 0 || fert > 0 || tea > 0;
+
+                        // --- අනාගත දින පරීක්ෂාව ---
+                        DateTime cellDate = DateTime(_selectedMonth.year, _selectedMonth.month, day);
+                        bool isFuture = cellDate.isAfter(today);
+
+                        return InkWell(
+                          onTap: isFuture ? null : () => _onDateTapped(day),
+                          child: Container(
+                            padding: const EdgeInsets.all(2.0),
+                            decoration: BoxDecoration(
+                              color: isFuture 
+                                  ? Colors.grey.shade200 
+                                  : (hasData ? Theme.of(context).primaryColor.withOpacity(0.08) : Colors.white),
+                              borderRadius: BorderRadius.circular(8.0),
+                              border: Border.all(
+                                color: isFuture 
+                                    ? Colors.grey.shade300 
+                                    : (hasData ? Theme.of(context).primaryColor : Colors.grey.shade300)
+                              ),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 2),
+                                Text(
+                                  day.toString(), 
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold, 
+                                    color: isFuture 
+                                        ? Colors.grey.shade400 
+                                        : (hasData ? Colors.black87 : Colors.grey)
+                                  )
+                                ),
+                                const Spacer(), // උඩට සහ පහළට ඉඩ සමතුලිත කරයි
+                                
+                                // දත්ත පේළි කිසිදු වෙනස් කිරීමකින් තොරව (FittedBox නොමැතිව)
+                                if (weight > 0) 
+                                  _buildAlignedRow(Icons.eco, Colors.green, weight.toStringAsFixed(1)),
+                                if (advance > 0) 
+                                  _buildAlignedRow(Icons.money, Colors.blue, NumberFormat.compact().format(advance)),
+                                if (fert > 0) 
+                                  _buildAlignedRow(Icons.eco, const Color.fromARGB(255, 60, 6, 6), fert.toStringAsFixed(0)), 
+                                if (tea > 0) 
+                                  _buildAlignedRow(Icons.local_cafe, Colors.orange, tea.toStringAsFixed(0)),
+                                  
+                                const SizedBox(height: 2),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     );
-                  },
+                  }
                 );
               },
             ),
@@ -271,7 +310,7 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
               text,
               style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
               textAlign: TextAlign.left,
-              overflow: TextOverflow.ellipsis,
+              overflow: TextOverflow.ellipsis, // දිග වැඩි වුවහොත් තිත් 3කින් පෙන්වයි (...)
             ),
           ),
         ],
