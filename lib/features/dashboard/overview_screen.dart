@@ -61,8 +61,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
     _fetchChartData();
   }
 
+  bool _isInitialLoad = true;
+
   Future<void> _fetchDashboardData() async {
-    setState(() => _isLoading = true);
+    if (_isInitialLoad) setState(() => _isLoading = true);
     DateTime now = DateTime.now();
     DateTime start;
     DateTime end = DateTime(now.year, now.month, now.day, 23, 59, 59);
@@ -194,12 +196,47 @@ class _OverviewScreenState extends State<OverviewScreen> {
         _totalTeaPacket1 = t1; _totalTeaPacket2 = t2;
         _overallOutstandingAdvances = totalOverallOutstanding;
         _isLoading = false;
+        _isInitialLoad = false;
       });
     } catch (e) { setState(() => _isLoading = false); }
   }
 
+  bool _isInitialChartLoad = true;
+  LineChartData? _cachedChartData;
+
+  void _buildCachedChartData() {
+    double mv = _chartValues.isNotEmpty ? _chartValues.reduce((a, b) => a > b ? a : b) : 100.0;
+    _cachedChartData = LineChartData(
+      gridData: const FlGridData(show: true, drawVerticalLine: false),
+      titlesData: FlTitlesData(
+        bottomTitles: AxisTitles(sideTitles: SideTitles(
+          showTitles: true, reservedSize: 60, interval: 1, 
+          getTitlesWidget: (v, m) {
+            int idx = v.toInt();
+            if (idx >= 0 && idx < _chartLabels.length) {
+              return Padding(padding: const EdgeInsets.only(top: 15.0), 
+                child: Transform.rotate(angle: -0.8, child: Text(_chartLabels[idx], style: const TextStyle(fontSize: 8, color: Colors.grey, fontWeight: FontWeight.bold)))
+              );
+            }
+            return const Text("");
+          }
+        )),
+        leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, m) => v == 0 ? const SizedBox() : Text('${v.toInt()}', style: const TextStyle(fontSize: 9, color: Colors.grey)))),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      ),
+      borderData: FlBorderData(show: false),
+      minY: 0, maxY: (mv == 0 ? 100 : mv) * 1.3,
+      lineBarsData: [LineChartBarData(
+        spots: List.generate(_chartValues.length, (i) => FlSpot(i.toDouble(), _chartValues[i])),
+        isCurved: true, color: Colors.green, barWidth: 3, dotData: const FlDotData(show: true),
+        belowBarData: BarAreaData(show: true, color: Colors.green.withOpacity(0.1))
+      )],
+    );
+  }
+
   Future<void> _fetchChartData() async {
-    setState(() => _isChartLoading = true);
+    if (_isInitialChartLoad) setState(() => _isChartLoading = true);
     DateTime now = DateTime.now();
     DateTime start;
     if (_chartFilter == 'දිනපතා') start = DateTime(now.year, now.month, now.day - 29);
@@ -217,62 +254,74 @@ class _OverviewScreenState extends State<OverviewScreen> {
           int diff = DateTime(now.year, now.month, now.day).difference(DateTime(ts.year, ts.month, ts.day)).inDays;
           if (diff >= 0 && diff < 30) tv[29 - diff] += (doc.data()['netWeight'] ?? 0.0).toDouble();
         }
-      } else {
-         // සතිපතා සහ මාසිකව සඳහා කලින් තිබූ logic එක...
+      } else if (_chartFilter == 'සතිපතා') {
+        tv = List.filled(4, 0.0);
+        for (int i = 3; i >= 0; i--) {
+          DateTime weekEnd = now.subtract(Duration(days: i * 7));
+          DateTime weekStart = now.subtract(Duration(days: i * 7 + 6));
+          String startFormat = DateFormat('MMM dd').format(weekStart);
+          String endFormat = weekStart.month == weekEnd.month 
+              ? DateFormat('dd').format(weekEnd) 
+              : DateFormat('MMM dd').format(weekEnd);
+          tl.add('$startFormat-$endFormat');
+        }
+        for (var doc in snapshot.docs) {
+          DateTime ts = (doc.data()['timestamp'] as Timestamp).toDate();
+          int diff = DateTime(now.year, now.month, now.day).difference(DateTime(ts.year, ts.month, ts.day)).inDays;
+          if (diff >= 0 && diff < 28) {
+            tv[3 - (diff ~/ 7)] += (doc.data()['netWeight'] ?? 0.0).toDouble();
+          }
+        }
+      } else if (_chartFilter == 'මාසිකව') {
+        tv = List.filled(6, 0.0);
+        for (int i = 5; i >= 0; i--) {
+          tl.add(DateFormat('MMM').format(DateTime(now.year, now.month - i, 1)));
+        }
+        for (var doc in snapshot.docs) {
+          DateTime ts = (doc.data()['timestamp'] as Timestamp).toDate();
+          int monthDiff = (now.year - ts.year) * 12 + now.month - ts.month;
+          if (monthDiff >= 0 && monthDiff < 6) {
+            tv[5 - monthDiff] += (doc.data()['netWeight'] ?? 0.0).toDouble();
+          }
+        }
       }
-      if (mounted) setState(() { _chartValues = tv; _chartLabels = tl; _isChartLoading = false; });
+      if (mounted) setState(() { 
+        _chartValues = tv; 
+        _chartLabels = tl; 
+        _isChartLoading = false; 
+        _isInitialChartLoad = false;
+        _buildCachedChartData();
+      });
     } catch (e) { if (mounted) setState(() => _isChartLoading = false); }
   }
 
   Widget _buildChartContainer() {
-    double mv = _chartValues.isNotEmpty ? _chartValues.reduce((a, b) => a > b ? a : b) : 100.0;
-    double chartWidth = _chartFilter == 'දිනපතා' ? 1400 : MediaQuery.of(context).size.width - 32;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        double containerWidth = constraints.maxWidth;
+        double chartWidth = _chartFilter == 'දිනපතා' 
+            ? (containerWidth > 1400 ? containerWidth : 1400.0) 
+            : containerWidth;
 
-    return Container(
-      height: 320,
-      padding: const EdgeInsets.only(top: 25, bottom: 10),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 5)]),
-      child: ScrollConfiguration(
-        behavior: MyCustomScrollBehavior(),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          reverse: true,
-          child: SizedBox(
-            width: chartWidth,
-            child: AbsorbPointer(
-              child: LineChart(
-                LineChartData(
-                  gridData: const FlGridData(show: true, drawVerticalLine: false),
-                  titlesData: FlTitlesData(
-                    bottomTitles: AxisTitles(sideTitles: SideTitles(
-                      showTitles: true, reservedSize: 60, interval: 1, 
-                      getTitlesWidget: (v, m) {
-                        int idx = v.toInt();
-                        if (idx >= 0 && idx < _chartLabels.length) {
-                          return Padding(padding: const EdgeInsets.only(top: 15.0), 
-                            child: Transform.rotate(angle: -0.8, child: Text(_chartLabels[idx], style: const TextStyle(fontSize: 8, color: Colors.grey, fontWeight: FontWeight.bold)))
-                          );
-                        }
-                        return const Text("");
-                      }
-                    )),
-                    leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, m) => v == 0 ? const SizedBox() : Text('${v.toInt()}', style: const TextStyle(fontSize: 9, color: Colors.grey)))),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  minY: 0, maxY: (mv == 0 ? 100 : mv) * 1.3,
-                  lineBarsData: [LineChartBarData(
-                    spots: List.generate(_chartValues.length, (i) => FlSpot(i.toDouble(), _chartValues[i])),
-                    isCurved: true, color: Colors.green, barWidth: 3, dotData: const FlDotData(show: true),
-                    belowBarData: BarAreaData(show: true, color: Colors.green.withOpacity(0.1))
-                  )],
+        return Container(
+          height: 320,
+          padding: const EdgeInsets.only(top: 25, bottom: 10),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 5)]),
+          child: ScrollConfiguration(
+            behavior: MyCustomScrollBehavior(),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              reverse: true,
+              child: SizedBox(
+                width: chartWidth,
+                child: AbsorbPointer(
+                  child: _cachedChartData != null ? LineChart(_cachedChartData!) : const SizedBox(),
                 ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -290,13 +339,13 @@ class _OverviewScreenState extends State<OverviewScreen> {
             _isLoading ? _loader() : _buildCombinedHeader(context, currencyF),
             const SizedBox(height: 20),
             _isLoading ? _loader() : _buildDbBusinessSummary(currencyF, weightF),
-            _buildSectionHeader('සාරාංශය', _selectedFilter, _filterOptions, (val) { setState(() => _selectedFilter = val!); _fetchDashboardData(); }),
-            const SizedBox(height: 16),
-            _isLoading ? _loader() : _buildSummaryGrid(context, weightF, currencyF),
-            const SizedBox(height: 32),
             _buildSectionHeader('දළු එකතුව (Kg)', _chartFilter, _chartFilterOptions, (val) { setState(() => _chartFilter = val!); _fetchChartData(); }),
             const SizedBox(height: 16),
             _isChartLoading ? _loader() : _buildChartContainer(),
+            const SizedBox(height: 32),
+            _buildSectionHeader('සාරාංශය', _selectedFilter, _filterOptions, (val) { setState(() => _selectedFilter = val!); _fetchDashboardData(); }),
+            const SizedBox(height: 16),
+            _isLoading ? _loader() : _buildSummaryGrid(context, weightF, currencyF),
             const SizedBox(height: 32),
             const Text('වැඩිම දළු සැපයුම්කරුවන්', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),

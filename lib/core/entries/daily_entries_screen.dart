@@ -84,47 +84,42 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
               builder: (context, snapshot) {
                 if (snapshot.hasData) _allCustomers = snapshot.data!.docs;
 
-                return Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 800),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: TextFormField(
-                            controller: _refController,
-                            decoration: const InputDecoration(labelText: 'අංකය', border: OutlineInputBorder()),
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
-                              final match = _allCustomers.where((c) => c['refNumber'] == value.trim()).toList();
-                              setState(() {
-                                _selectedCustomerId = match.isNotEmpty ? match.first.id : null;
-                              });
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 3,
-                          child: DropdownButtonFormField<String>(
-                            decoration: const InputDecoration(labelText: 'නම', border: OutlineInputBorder()),
-                            isExpanded: true,
-                            value: _selectedCustomerId,
-                            items: _allCustomers.map((doc) {
-                              return DropdownMenuItem(value: doc.id, child: Text(doc['name']));
-                            }).toList(),
-                            onChanged: (val) {
-                              setState(() {
-                                _selectedCustomerId = val;
-                                final customer = _allCustomers.firstWhere((c) => c.id == val);
-                                _refController.text = customer['refNumber'];
-                              });
-                            },
-                          ),
-                        ),
-                      ],
+                return Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: TextFormField(
+                        controller: _refController,
+                        decoration: const InputDecoration(labelText: 'අංකය', border: OutlineInputBorder()),
+                        keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          final match = _allCustomers.where((c) => c['refNumber'] == value.trim()).toList();
+                          setState(() {
+                            _selectedCustomerId = match.isNotEmpty ? match.first.id : null;
+                          });
+                        },
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 3,
+                      child: DropdownButtonFormField<String>(
+                        decoration: const InputDecoration(labelText: 'නම', border: OutlineInputBorder()),
+                        isExpanded: true,
+                        value: _selectedCustomerId,
+                        items: _allCustomers.map((doc) {
+                          return DropdownMenuItem(value: doc.id, child: Text(doc['name']));
+                        }).toList(),
+                        onChanged: (val) {
+                          setState(() {
+                            _selectedCustomerId = val;
+                            final customer = _allCustomers.firstWhere((c) => c.id == val);
+                            _refController.text = customer['refNumber'];
+                          });
+                        },
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
@@ -132,18 +127,13 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
             color: Theme.of(context).primaryColor.withOpacity(0.1),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(icon: const Icon(Icons.arrow_back_ios), onPressed: () => _changeMonth(-1)),
-                    Text(monthName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    IconButton(icon: const Icon(Icons.arrow_forward_ios), onPressed: () => _changeMonth(1)),
-                  ],
-                ),
-              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(icon: const Icon(Icons.arrow_back_ios), onPressed: () => _changeMonth(-1)),
+                Text(monthName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                IconButton(icon: const Icon(Icons.arrow_forward_ios), onPressed: () => _changeMonth(1)),
+              ],
             ),
           ),
           Expanded(

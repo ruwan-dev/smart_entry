@@ -258,16 +258,13 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
               top: 16.0, 
               bottom: bottomInset > 0 ? bottomInset + 24.0 : 24.0, 
             ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      
-                      Container(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  
+                  Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
                     decoration: BoxDecoration(
@@ -427,9 +424,7 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
                             ),
                     ),
                   ),
-                    ],
-                  ),
-                ),
+                ],
               ),
             ),
           ),
