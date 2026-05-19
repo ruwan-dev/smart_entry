@@ -12,20 +12,33 @@ class NetworkService {
   bool isDialogShowing = false;
   StreamSubscription? _subscription;
   GlobalKey<NavigatorState>? _navigatorKey;
+  Timer? _debounceTimer; // බොරු Offline Alerts වැළැක්වීම සඳහා Timer එක එකතු කරන ලදි
 
   final ValueNotifier<bool> connectionStatus = ValueNotifier<bool>(true); 
 
   void initialize(GlobalKey<NavigatorState> navigatorKey) {
     _navigatorKey = navigatorKey;
     
+    _subscription?.cancel(); // දැනටමත් subscription එකක් ඇත්නම් එය cancel කිරීම
+    
     _subscription = InternetConnection().onStatusChange.listen((InternetStatus status) {
       hasInternet = status == InternetStatus.connected;
       connectionStatus.value = hasInternet; 
 
-      if (!hasInternet && !isDialogShowing) {
-        _showNoInternetDialog();
-      } else if (hasInternet && isDialogShowing) {
-        _hideNoInternetDialog();
+      _debounceTimer?.cancel(); // තත්ත්වය වෙනස් වූ වහාම පරණ timer එක නතර කිරීම
+
+      if (!hasInternet) {
+        // අන්තර්ජාලය නැති වූ වහාම පෙන්වන්නේ නැතිව තත්පර 3ක් බලා සිටීම
+        _debounceTimer = Timer(const Duration(seconds: 3), () {
+          if (!isDialogShowing) {
+            _showNoInternetDialog();
+          }
+        });
+      } else {
+        // අන්තර්ජාලය නැවත පැමිණි විට වහාම Dialog එක සැඟවීම
+        if (isDialogShowing) {
+          _hideNoInternetDialog();
+        }
       }
     });
   }
@@ -140,7 +153,7 @@ class NetworkService {
                   Icon(Icons.wifi, color: Colors.white, size: 20),
                   SizedBox(width: 12),
                   Text(
-                    'අන්තර්ජාල සම්බන්ධතාවය යථා තත්ත්වයට පත් විය',
+                    'Back Online!',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -156,6 +169,7 @@ class NetworkService {
   }
 
   void dispose() {
+    _debounceTimer?.cancel(); // Timer එක dispose කිරීම
     _subscription?.cancel();
   }
 }
