@@ -43,6 +43,15 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
       String displayMonth = "$_currentYear $monthName";
       String ratesDocId = "$_currentYear-$monthName";
 
+      int prevMonth = _selectedMonth - 1;
+      int prevYear = _currentYear;
+      if (prevMonth == 0) {
+        prevMonth = 12;
+        prevYear = _currentYear - 1;
+      }
+      String prevMonthName = DateFormat('MMMM').format(DateTime(prevYear, prevMonth));
+      String prevMonthKey = "$prevYear-$prevMonthName"; 
+
       var ratesDoc = await FirebaseFirestore.instance.collection('MonthlyRates').doc(ratesDocId).get();
       if (!ratesDoc.exists) {
         setState(() { _ratesMissing = true; _isCalculating = false; });
@@ -98,6 +107,20 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
           rows.add({'date': d['date'], 'weight': w, 'items': items});
         }
 
+        double lastMonthArrears = 0.0;
+        var prevBillDoc = await FirebaseFirestore.instance
+            .collection('FinalizedBills')
+            .doc("${customer.id}_$prevMonthKey")
+            .get();
+
+        if (prevBillDoc.exists) {
+          var prevBillData = prevBillDoc.data()?['billData'] ?? {};
+          double prevNetPayable = (prevBillData['netPayable'] ?? 0.0).toDouble();
+          if (prevNetPayable < 0) {
+            lastMonthArrears = prevNetPayable.abs();
+          }
+        }
+
         double gross = totalW * teaRate;
         double trans = totalW * transRate;
         double other = totalAdv + (f1Q * (pData['fertilizer1Price'] ?? 0)) + (f2Q * (pData['fertilizer2Price'] ?? 0)) + (t1Q * (pData['teaPacket1Price'] ?? 0)) + (t2Q * (pData['teaPacket2Price'] ?? 0));
@@ -106,8 +129,11 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
           'customerId': customer.id, 'name': customer['name'], 'ref': customer['refNumber'],
           'bill': {
             'displayMonth': displayMonth, 'teaRate': teaRate, 'grossIncome': gross,
-            'transportCost': trans, 'otherCosts': other, 'totalDeductions': trans + other,
-            'netPayable': gross - (trans + other), 'tableRows': rows,
+            'transportCost': trans, 'otherCosts': other, 
+            'arrears': lastMonthArrears, 
+            'totalDeductions': trans + other + lastMonthArrears, 
+            'netPayable': gross - (trans + other + lastMonthArrears), 
+            'tableRows': rows,
             'advTotal': totalAdv, 'f1Qty': f1Q, 'f1Total': f1Q * (pData['fertilizer1Price'] ?? 0),
             'f2Qty': f2Q, 'f2Total': f2Q * (pData['fertilizer2Price'] ?? 0),
             't1Qty': t1Q, 't1Total': t1Q * (pData['teaPacket1Price'] ?? 0),
@@ -129,8 +155,17 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
     final font = await PdfGoogleFonts.courierPrimeRegular();
 
     try {
+      String monthName = DateFormat('MMMM').format(DateTime(_currentYear, _selectedMonth));
+      String ratesDocId = "$_currentYear-$monthName";
+
+      double totalWeight = 0, totalGross = 0, totalAdvance = 0;
+      double totalF1Qty = 0, totalF1Amt = 0, totalF2Qty = 0, totalF2Amt = 0;
+      double totalT1Qty = 0, totalT1Amt = 0, totalT2Qty = 0, totalT2Amt = 0;
+      double totalTransport = 0, totalPositiveNet = 0, totalNegativeNet = 0, totalNet = 0;
+
       for (var item in _billingList) {
         var b = item['bill'];
+        
         if (item['isFinalized'] == false) {
           String monthKey = b['displayMonth'].toString().replaceAll(' ', '-');
           await FirebaseFirestore.instance.collection('FinalizedBills').doc("${item['customerId']}_$monthKey").set({
@@ -139,19 +174,54 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
           });
         }
         
+        double tw = 0;
+        for (var r in b['tableRows']) tw += (r['weight'] ?? 0);
+        totalWeight += tw;
+        totalGross += (b['grossIncome'] ?? 0);
+        totalAdvance += (b['advTotal'] ?? 0);
+        totalF1Qty += (b['f1Qty'] ?? 0); totalF1Amt += (b['f1Total'] ?? 0);
+        totalF2Qty += (b['f2Qty'] ?? 0); totalF2Amt += (b['f2Total'] ?? 0);
+        totalT1Qty += (b['t1Qty'] ?? 0); totalT1Amt += (b['t1Total'] ?? 0);
+        totalT2Qty += (b['t2Qty'] ?? 0); totalT2Amt += (b['t2Total'] ?? 0);
+        totalTransport += (b['transportCost'] ?? 0);
+        
+        double net = (b['netPayable'] ?? 0);
+        totalNet += net;
+        if (net > 0) totalPositiveNet += net;
+        else totalNegativeNet += net.abs();
+
         pdf.addPage(
           pw.Page(
-            pageFormat: PdfPageFormat.a5, // A5 Size
-            margin: const pw.EdgeInsets.all(20),
+            // 💡 Landscape ලෙස ලබා දීම: පළල 21.07 CM, උස 13.08 CM
+            pageFormat: PdfPageFormat(21.07 * PdfPageFormat.cm, 13.08 * PdfPageFormat.cm), 
+            // 💡 උඩ සහ යට margin එක තවත් අඩු කර ඇත.
+            margin: const pw.EdgeInsets.symmetric(horizontal: 15, vertical: 10), 
             build: (pw.Context context) => _buildPdfBill(item, font),
           ),
         );
       }
 
-      String monthName = DateFormat('MMMM').format(DateTime(_currentYear, _selectedMonth));
+      if (!_isAlreadyFinalized) {
+        await FirebaseFirestore.instance.collection('MonthlySummaries').doc(ratesDocId).set({
+          'month': ratesDocId,
+          'totalWeight': totalWeight,
+          'totalGross': totalGross,
+          'totalAdvance': totalAdvance,
+          'totalF1Qty': totalF1Qty, 'totalF1Amt': totalF1Amt,
+          'totalF2Qty': totalF2Qty, 'totalF2Amt': totalF2Amt,
+          'totalT1Qty': totalT1Qty, 'totalT1Amt': totalT1Amt,
+          'totalT2Qty': totalT2Qty, 'totalT2Amt': totalT2Amt,
+          'totalTransport': totalTransport,
+          'totalPositiveNet': totalPositiveNet,
+          'totalNegativeNet': totalNegativeNet,
+          'totalNet': totalNet,
+          'finalizedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
       String customFileName = "${_currentYear}_${monthName}_Monthly_Bills.pdf";
-      
       await Printing.layoutPdf(onLayout: (format) async => pdf.save(), name: customFileName);
+      
       _checkStatusAndCalculate();
     } catch (e) { 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'))); 
@@ -306,74 +376,203 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
     );
   }
 
-  // --- PDF Build Logic (A5 Optimized Center Column Alignment) ---
+  // ===========================================================================
+  // 🌟 FULLY OPTIMIZED LANDSCAPE PDF LAYOUT (Width 21.07cm x Height 13.08cm)
+  // ===========================================================================
   pw.Widget _buildPdfBill(Map<String, dynamic> item, pw.Font font) {
     var b = item['bill'];
+
+    Map<int, double> dailyWeights = {};
+    List<String> advanceRecords = [];
     double totalW = 0;
-    for (var r in b['tableRows']) totalW += (r['weight'] ?? 0);
 
-    // A5 පළලට ගැලපෙන සේ Padding අගයන් වෙනස් කරන ලදී (මුළු අගය 54 ක් වන සේ)
-    return pw.Center(
-      child: pw.Column(
-        mainAxisSize: pw.MainAxisSize.min,
-        crossAxisAlignment: pw.CrossAxisAlignment.center,
+    for (var row in b['tableRows']) {
+      int day = int.parse(row['date'].toString().split('-').last);
+      double w = (row['weight'] ?? 0.0).toDouble();
+      if (w > 0) {
+        dailyWeights[day] = (dailyWeights[day] ?? 0.0) + w;
+        totalW += w;
+      }
+
+      List items = row['items'] ?? [];
+      for (var it in items) {
+        if (it['desc'] == 'Advance' && it['amt'] > 0) {
+          advanceRecords.add('D${day.toString().padLeft(2, '0')}: Rs.${it['amt'].toStringAsFixed(0)}');
+        }
+      }
+    }
+
+    final gridRows = <pw.TableRow>[];
+    
+    gridRows.add(
+      pw.TableRow(
+        decoration: const pw.BoxDecoration(color: PdfColors.grey200),
         children: [
-          pw.Text('NALEEN SURANGA', style: pw.TextStyle(font: font, fontSize: 13, fontWeight: pw.FontWeight.bold)),
-          pw.Text('Authorized Green Dealer - Gangoda, Rakwana', style: pw.TextStyle(font: font, fontSize: 8)),
-          pw.Text('Tel: 0713444934 / 0758258544', style: pw.TextStyle(font: font, fontSize: 8)),
-          pw.Text('=' * 54, style: pw.TextStyle(font: font, fontSize: 8)),
-          
-          pw.Text('Name : ${item['name'].toString()} | Ref: ${item['ref']}', style: pw.TextStyle(font: font, fontSize: 9)),
-          pw.Text('Month: ${b['displayMonth']}', style: pw.TextStyle(font: font, fontSize: 9)),
-          pw.Text('=' * 54, style: pw.TextStyle(font: font, fontSize: 8)),
-          
-          // Table Header (A5 පළලට ගැලපෙන පරතරය)
-          pw.Text('Day  Description          Qty        Price         Total', style: pw.TextStyle(font: font, fontSize: 8)),
-          pw.Text('---  ------------------  --------  ----------  ----------', style: pw.TextStyle(font: font, fontSize: 8)),
-          
-          ... (b['tableRows'] as List).map((row) {
-            String day = row['date'].toString().split('-').last;
-            double w = (row['weight'] ?? 0.0).toDouble();
-            List items = row['items'] ?? [];
-            if (w <= 0 && items.isEmpty) return pw.SizedBox();
-            
-            return pw.Column(children: [
-              if (w > 0) 
-                pw.Text('${day.padRight(5)}${'Tea Leaves'.padRight(18)}${(w.toStringAsFixed(1)).padLeft(8)}${b['teaRate'].toStringAsFixed(2).padLeft(12)}${(w * b['teaRate']).toStringAsFixed(2).padLeft(12)}', style: pw.TextStyle(font: font, fontSize: 8)),
-              
-              ... items.map((it) => pw.Text(
-                '${(w > 0 ? "" : day).padRight(5)}${it['desc'].toString().padRight(18)}${(it['qty'] > 0 ? it['qty'].toStringAsFixed(0) : "-").padLeft(8)}${(it['uPrice'] > 0 ? it['uPrice'].toStringAsFixed(2) : "-").padLeft(12)}${it['amt'].toStringAsFixed(2).padLeft(12)}', 
-                style: pw.TextStyle(font: font, fontSize: 8)
-              )),
-            ]);
-          }).toList(),
-          
-          pw.Text('-' * 54, style: pw.TextStyle(font: font, fontSize: 8)),
-          _pdfSumRow('Total Tea Leaves Weight', '${totalW.toStringAsFixed(1)} Kg', font),
-          _pdfSumRow('Gross Income (Tea)', b['grossIncome'].toStringAsFixed(2), font),
-          _pdfSumRow('Transport Deductions', '-${b['transportCost'].toStringAsFixed(2)}', font),
-          _pdfSumRow('Other Deductions', '-${itOtherCosts(b).toStringAsFixed(2)}', font),
-          pw.Text('=' * 54, style: pw.TextStyle(font: font, fontSize: 8)),
-          _pdfSumRow('NET PAYABLE (Rs.)', b['netPayable'].toStringAsFixed(2), font, bold: true),
-          pw.Text('=' * 54, style: pw.TextStyle(font: font, fontSize: 8)),
+          for (int i = 0; i < 8; i++) ...[
+            _pdfCell('Day', font, bold: true),
+            _pdfCell('Kg', font, bold: true),
+          ]
+        ]
+      )
+    );
 
-          pw.SizedBox(height: 12),
-          pw.Text('Thank You!', style: pw.TextStyle(font: font, fontSize: 9, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 3),
-          pw.Text(
-            'Powered by OrbitView Innovations',
-            style: pw.TextStyle(font: font, fontSize: 7, color: PdfColors.grey700, fontStyle: pw.FontStyle.italic),
-          ),
-        ],
+    for (int r = 0; r < 4; r++) { 
+      final rowChildren = <pw.Widget>[];
+      for (int c = 0; c < 8; c++) { 
+        int day = (r * 8) + c + 1; 
+        if (day > 31) {
+          rowChildren.addAll([_pdfCell('', font), _pdfCell('', font)]);
+        } else {
+          double w = dailyWeights[day] ?? 0.0;
+          rowChildren.addAll([
+            _pdfCell(day.toString(), font),
+            _pdfCell(w > 0 ? w.toStringAsFixed(1) : '-', font),
+          ]);
+        }
+      }
+      gridRows.add(pw.TableRow(children: rowChildren));
+    }
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        // --- HEADER ---
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('NALEEN SURANGA', style: pw.TextStyle(font: font, fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                pw.Text('Authorized Green Dealer - Gangoda, Rakwana', style: pw.TextStyle(font: font, fontSize: 8)),
+                pw.Text('Tel: 0713444934 / 0758258544', style: pw.TextStyle(font: font, fontSize: 8)),
+              ]
+            ),
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                pw.Text('Name: ${item['name']} | Ref: ${item['ref'].toString().padLeft(3, '0')}', style: pw.TextStyle(font: font, fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                pw.Text('Month: ${b['displayMonth']}', style: pw.TextStyle(font: font, fontSize: 9)),
+              ]
+            )
+          ]
+        ),
+        pw.SizedBox(height: 5),
+
+        // --- 1 to 31 GRID ---
+        pw.Table(
+          border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey700),
+          // 💡 Table එකට 100% පළල ලබා ගැනීම.
+          defaultColumnWidth: const pw.FlexColumnWidth(), 
+          children: gridRows,
+        ),
+        pw.SizedBox(height: 10),
+
+        // --- SUMMARY & DEDUCTIONS ---
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              flex: 1, // 💡 තීරු දෙකටම සමාන ඉඩක් (Flex 1) ලබා දී ඇත.
+              child: pw.Container(
+                padding: const pw.EdgeInsets.only(right: 15),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Deductions Breakdown:', style: pw.TextStyle(font: font, fontSize: 9, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
+                    pw.SizedBox(height: 5),
+                    
+                    if (b['advTotal'] > 0) ...[
+                      pw.Text('Advances (Total: Rs.${b['advTotal'].toStringAsFixed(2)})', style: pw.TextStyle(font: font, fontSize: 8, fontWeight: pw.FontWeight.bold)),
+                      pw.SizedBox(height: 2),
+                      pw.Wrap(
+                        spacing: 8, runSpacing: 2,
+                        children: advanceRecords.map((e) => pw.Text(e, style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.grey800))).toList(),
+                      ),
+                      pw.SizedBox(height: 4),
+                    ],
+
+                    if (b['f1Qty'] > 0) pw.Text('Fertilizer 01 : ${b['f1Qty']} x Rs.${(b['f1Total']/b['f1Qty']).toStringAsFixed(2)} = Rs.${b['f1Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8)),
+                    if (b['f2Qty'] > 0) pw.Text('Fertilizer 02 : ${b['f2Qty']} x Rs.${(b['f2Total']/b['f2Qty']).toStringAsFixed(2)} = Rs.${b['f2Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8)),
+                    if (b['t1Qty'] > 0) pw.Text('Tea Pkt 01    : ${b['t1Qty']} x Rs.${(b['t1Total']/b['t1Qty']).toStringAsFixed(2)} = Rs.${b['t1Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8)),
+                    if (b['t2Qty'] > 0) pw.Text('Tea Pkt 02    : ${b['t2Qty']} x Rs.${(b['t2Total']/b['t2Qty']).toStringAsFixed(2)} = Rs.${b['t2Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8)),
+                    
+                    pw.SizedBox(height: 4),
+                    pw.Text('Transport (${totalW.toStringAsFixed(1)}kg) : Rs.${b['transportCost'].toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8)),
+                    
+                    if ((b['arrears'] ?? 0) > 0) ...[
+                      pw.SizedBox(height: 2),
+                      pw.Text('Last Month Arrears : Rs.${b['arrears'].toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.red800)),
+                    ]
+                  ]
+                )
+              )
+            ),
+
+            pw.Expanded(
+              flex: 1, // 💡 තීරු දෙකටම සමාන ඉඩක් (Flex 1) ලබා දී ඇත.
+              child: pw.Container(
+                padding: const pw.EdgeInsets.all(5),
+                decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.5, color: PdfColors.grey700)),
+                child: pw.Column(
+                  children: [
+                    _pdfSummaryRow('Total Weight', '${totalW.toStringAsFixed(1)} Kg', font, bold: true),
+                    _pdfSummaryRow('Tea Rate (1Kg)', 'Rs. ${b['teaRate'].toStringAsFixed(2)}', font), 
+                    pw.Divider(thickness: 0.5),
+                    _pdfSummaryRow('Gross Income', 'Rs. ${b['grossIncome'].toStringAsFixed(2)}', font, bold: true),
+                    pw.SizedBox(height: 5),
+                    
+                    _pdfSummaryRow('Advances Total', '-${b['advTotal'].toStringAsFixed(2)}', font),
+                    _pdfSummaryRow('Fert. & Tea Pkt', '-${(b['f1Total'] + b['f2Total'] + b['t1Total'] + b['t2Total']).toStringAsFixed(2)}', font),
+                    _pdfSummaryRow('Transport', '-${b['transportCost'].toStringAsFixed(2)}', font),
+                    if ((b['arrears'] ?? 0) > 0)
+                      _pdfSummaryRow('Arrears', '-${b['arrears'].toStringAsFixed(2)}', font),
+                    
+                    pw.Divider(thickness: 0.5),
+                    _pdfSummaryRow('Total Deduct.', '-${b['totalDeductions'].toStringAsFixed(2)}', font, bold: true),
+                    pw.Divider(thickness: 1.5),
+                    _pdfSummaryRow('NET PAYABLE', 'Rs. ${b['netPayable'].toStringAsFixed(2)}', font, bold: true),
+                    pw.Divider(thickness: 1.5),
+                  ]
+                )
+              )
+            )
+          ]
+        ),
+
+        pw.Spacer(), 
+        pw.Divider(thickness: 0.5),
+        pw.Center(
+          child: pw.Text('Thank You! | Powered by OrbitView Innovations', style: pw.TextStyle(font: font, fontSize: 7, fontStyle: pw.FontStyle.italic, color: PdfColors.grey700))
+        )
+      ]
+    );
+  }
+
+  // 💡 යටට යන එක නවත්වන්න cell වල Padding (හිඩැස) අඩු කර ඇත
+  pw.Widget _pdfCell(String text, pw.Font font, {bool bold = false}) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 1),
+      child: pw.Text(
+        text,
+        textAlign: pw.TextAlign.center,
+        style: pw.TextStyle(font: font, fontSize: 8, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal),
       ),
     );
   }
 
-  // Helper to get total other costs safely
-  double itOtherCosts(dynamic b) => (b['otherCosts'] ?? 0.0).toDouble();
-
-  pw.Widget _pdfSumRow(String label, String val, pw.Font font, {bool bold = false}) {
-    // A5 පළලට ගැලපෙන සේ padRight අගය 40 ලෙස වෙනස් කරන ලදී
-    return pw.Text(label.padRight(40) + val.padLeft(14), style: pw.TextStyle(font: font, fontSize: 9, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal));
+  // 💡 Summary එකෙත් Padding අඩු කර ඇත
+  pw.Widget _pdfSummaryRow(String label, String value, pw.Font font, {bool bold = false}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 1.0),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(label, style: pw.TextStyle(font: font, fontSize: 8, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+          pw.Text(value, style: pw.TextStyle(font: font, fontSize: 8, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+        ],
+      ),
+    );
   }
 }

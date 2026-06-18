@@ -51,6 +51,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: "^0.13.1"
   flutter_native_splash: ^2.4.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
@@ -60,6 +61,12 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   peanut: ^6.0.1
+  
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/logo.png" # ඔබේ ලෝගෝ එක තියෙන පාර (Path)
+  min_sdk_android: 21 # ඔබගේ ඇන්ඩ්‍රොයිඩ් sdk එකට අනුව
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
