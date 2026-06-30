@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 class MonthlyClosingWidget extends StatefulWidget {
   const MonthlyClosingWidget({super.key});
@@ -152,7 +153,13 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
     if (_billingList.isEmpty) return;
     setState(() => _isCalculating = true);
     final pdf = pw.Document();
-    final font = await PdfGoogleFonts.courierPrimeRegular();
+    
+    // 💡 FM-Abhaya ෆොන්ට් එක Offline ක්‍රමයට load කිරීම
+    final fmFontData = await rootBundle.load("assets/fonts/FM-Abhaya.ttf");
+    final fmFont = pw.Font.ttf(fmFontData);
+    
+    // 💡 ඉංග්‍රීසි අකුරු සහ ඉලක්කම් සඳහා සාමාන්‍ය ෆොන්ට් එකක්
+    final engFont = pw.Font.helvetica();
 
     try {
       String monthName = DateFormat('MMMM').format(DateTime(_currentYear, _selectedMonth));
@@ -192,11 +199,9 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
 
         pdf.addPage(
           pw.Page(
-            // 💡 Landscape ලෙස ලබා දීම: පළල 21.07 CM, උස 13.08 CM
             pageFormat: PdfPageFormat(21.07 * PdfPageFormat.cm, 13.08 * PdfPageFormat.cm), 
-            // 💡 උඩ සහ යට margin එක තවත් අඩු කර ඇත.
             margin: const pw.EdgeInsets.symmetric(horizontal: 15, vertical: 10), 
-            build: (pw.Context context) => _buildPdfBill(item, font),
+            build: (pw.Context context) => _buildPdfBill(item, engFont, fmFont),
           ),
         );
       }
@@ -377,9 +382,9 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
   }
 
   // ===========================================================================
-  // 🌟 FULLY OPTIMIZED LANDSCAPE PDF LAYOUT (Width 21.07cm x Height 13.08cm)
+  // 🌟 FM FONTS යොදාගෙන නිර්මාණය කළ බිල්පත (අකුරු නොකැඩී ප්‍රින්ට් වේ)
   // ===========================================================================
-  pw.Widget _buildPdfBill(Map<String, dynamic> item, pw.Font font) {
+  pw.Widget _buildPdfBill(Map<String, dynamic> item, pw.Font engFont, pw.Font fmFont) {
     var b = item['bill'];
 
     Map<int, double> dailyWeights = {};
@@ -409,8 +414,8 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         decoration: const pw.BoxDecoration(color: PdfColors.grey200),
         children: [
           for (int i = 0; i < 8; i++) ...[
-            _pdfCell('Day', font, bold: true),
-            _pdfCell('Kg', font, bold: true),
+            _pdfCell('Day', engFont, bold: true),
+            _pdfCell('Kg', engFont, bold: true),
           ]
         ]
       )
@@ -421,12 +426,12 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
       for (int c = 0; c < 8; c++) { 
         int day = (r * 8) + c + 1; 
         if (day > 31) {
-          rowChildren.addAll([_pdfCell('', font), _pdfCell('', font)]);
+          rowChildren.addAll([_pdfCell('', engFont), _pdfCell('', engFont)]);
         } else {
           double w = dailyWeights[day] ?? 0.0;
           rowChildren.addAll([
-            _pdfCell(day.toString(), font),
-            _pdfCell(w > 0 ? w.toStringAsFixed(1) : '-', font),
+            _pdfCell(day.toString(), engFont),
+            _pdfCell(w > 0 ? w.toStringAsFixed(1) : '-', engFont),
           ]);
         }
       }
@@ -436,7 +441,7 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        // --- HEADER ---
+        // --- HEADER (English Font) ---
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           crossAxisAlignment: pw.CrossAxisAlignment.end,
@@ -444,16 +449,16 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('NALEEN SURANGA', style: pw.TextStyle(font: font, fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                pw.Text('Authorized Green Dealer - Gangoda, Rakwana', style: pw.TextStyle(font: font, fontSize: 8)),
-                pw.Text('Tel: 0713444934 / 0758258544', style: pw.TextStyle(font: font, fontSize: 8)),
+                pw.Text('NALEEN SURANGA', style: pw.TextStyle(font: engFont, fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                pw.Text('Authorized Green Dealer - Gangoda, Rakwana', style: pw.TextStyle(font: engFont, fontSize: 8)),
+                pw.Text('Tel: 0713444934 / 0758258544', style: pw.TextStyle(font: engFont, fontSize: 8)),
               ]
             ),
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.end,
               children: [
-                pw.Text('Name: ${item['name']} | Ref: ${item['ref'].toString().padLeft(3, '0')}', style: pw.TextStyle(font: font, fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                pw.Text('Month: ${b['displayMonth']}', style: pw.TextStyle(font: font, fontSize: 9)),
+                pw.Text('Name: ${item['name']} | Ref: ${item['ref'].toString().padLeft(3, '0')}', style: pw.TextStyle(font: engFont, fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                pw.Text('Month: ${b['displayMonth']}', style: pw.TextStyle(font: engFont, fontSize: 9)),
               ]
             )
           ]
@@ -463,7 +468,6 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         // --- 1 to 31 GRID ---
         pw.Table(
           border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey700),
-          // 💡 Table එකට 100% පළල ලබා ගැනීම.
           defaultColumnWidth: const pw.FlexColumnWidth(), 
           children: gridRows,
         ),
@@ -474,36 +478,72 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Expanded(
-              flex: 1, // 💡 තීරු දෙකටම සමාන ඉඩක් (Flex 1) ලබා දී ඇත.
+              flex: 1, 
               child: pw.Container(
                 padding: const pw.EdgeInsets.only(right: 15),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('Deductions Breakdown:', style: pw.TextStyle(font: font, fontSize: 9, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
+                    // 'අඩු කිරීම් විස්තරය:'
+                    pw.Text('wvq lsÍï úia;rh:', style: pw.TextStyle(font: fmFont, fontSize: 12, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
                     pw.SizedBox(height: 5),
                     
                     if (b['advTotal'] > 0) ...[
-                      pw.Text('Advances (Total: Rs.${b['advTotal'].toStringAsFixed(2)})', style: pw.TextStyle(font: font, fontSize: 8, fontWeight: pw.FontWeight.bold)),
+                      pw.Row(children: [
+                        // 'අත්තිකාරම් '
+                        pw.Text('w;a;sldrï ', style: pw.TextStyle(font: fmFont, fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                        pw.Text('(Total: Rs.${b['advTotal'].toStringAsFixed(2)})', style: pw.TextStyle(font: engFont, fontSize: 8, fontWeight: pw.FontWeight.bold)),
+                      ]),
                       pw.SizedBox(height: 2),
                       pw.Wrap(
                         spacing: 8, runSpacing: 2,
-                        children: advanceRecords.map((e) => pw.Text(e, style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.grey800))).toList(),
+                        children: advanceRecords.map((e) => pw.Text(e, style: pw.TextStyle(font: engFont, fontSize: 8, color: PdfColors.grey800))).toList(),
                       ),
                       pw.SizedBox(height: 4),
                     ],
 
-                    if (b['f1Qty'] > 0) pw.Text('Fertilizer 01 : ${b['f1Qty']} x Rs.${(b['f1Total']/b['f1Qty']).toStringAsFixed(2)} = Rs.${b['f1Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8)),
-                    if (b['f2Qty'] > 0) pw.Text('Fertilizer 02 : ${b['f2Qty']} x Rs.${(b['f2Total']/b['f2Qty']).toStringAsFixed(2)} = Rs.${b['f2Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8)),
-                    if (b['t1Qty'] > 0) pw.Text('Tea Pkt 01    : ${b['t1Qty']} x Rs.${(b['t1Total']/b['t1Qty']).toStringAsFixed(2)} = Rs.${b['t1Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8)),
-                    if (b['t2Qty'] > 0) pw.Text('Tea Pkt 02    : ${b['t2Qty']} x Rs.${(b['t2Total']/b['t2Qty']).toStringAsFixed(2)} = Rs.${b['t2Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8)),
+                    if (b['f1Qty'] > 0) 
+                      pw.Row(children: [
+                        // 'පොහොර 01 : '
+                        pw.Text('fmdfydr 01 : ', style: pw.TextStyle(font: fmFont, fontSize: 10)),
+                        pw.Text('${b['f1Qty']} x Rs.${(b['f1Total']/b['f1Qty']).toStringAsFixed(2)} = Rs.${b['f1Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: engFont, fontSize: 8)),
+                      ]),
+
+                    if (b['f2Qty'] > 0) 
+                      pw.Row(children: [
+                        // 'පොහොර 02 : '
+                        pw.Text('fmdfydr 02 : ', style: pw.TextStyle(font: fmFont, fontSize: 10)),
+                        pw.Text('${b['f2Qty']} x Rs.${(b['f2Total']/b['f2Qty']).toStringAsFixed(2)} = Rs.${b['f2Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: engFont, fontSize: 8)),
+                      ]),
+
+                    if (b['t1Qty'] > 0) 
+                      pw.Row(children: [
+                        // 'තේ කොළ 01 : '
+                        pw.Text('f;a fld< 01 : ', style: pw.TextStyle(font: fmFont, fontSize: 10)),
+                        pw.Text('${b['t1Qty']} x Rs.${(b['t1Total']/b['t1Qty']).toStringAsFixed(2)} = Rs.${b['t1Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: engFont, fontSize: 8)),
+                      ]),
+
+                    if (b['t2Qty'] > 0) 
+                      pw.Row(children: [
+                        // 'තේ කොළ 02 : '
+                        pw.Text('f;a fld< 02 : ', style: pw.TextStyle(font: fmFont, fontSize: 10)),
+                        pw.Text('${b['t2Qty']} x Rs.${(b['t2Total']/b['t2Qty']).toStringAsFixed(2)} = Rs.${b['t2Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: engFont, fontSize: 8)),
+                      ]),
                     
                     pw.SizedBox(height: 4),
-                    pw.Text('Transport (${totalW.toStringAsFixed(1)}kg) : Rs.${b['transportCost'].toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8)),
+                    pw.Row(children: [
+                      // 'ප්‍රවාහන ගාස්තු '
+                      pw.Text('m%jdyk .dia;= ', style: pw.TextStyle(font: fmFont, fontSize: 10)),
+                      pw.Text('(${totalW.toStringAsFixed(1)}kg) : Rs.${b['transportCost'].toStringAsFixed(2)}', style: pw.TextStyle(font: engFont, fontSize: 8)),
+                    ]),
                     
                     if ((b['arrears'] ?? 0) > 0) ...[
                       pw.SizedBox(height: 2),
-                      pw.Text('Last Month Arrears : Rs.${b['arrears'].toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.red800)),
+                      pw.Row(children: [
+                        // 'පසුගිය මාසයේ හිඟ මුදල් : '
+                        pw.Text('miq.sh udifha ysÕ uqo,a : ', style: pw.TextStyle(font: fmFont, fontSize: 10, color: PdfColors.red800)),
+                        pw.Text('Rs.${b['arrears'].toStringAsFixed(2)}', style: pw.TextStyle(font: engFont, fontSize: 8, color: PdfColors.red800)),
+                      ]),
                     ]
                   ]
                 )
@@ -511,28 +551,32 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
             ),
 
             pw.Expanded(
-              flex: 1, // 💡 තීරු දෙකටම සමාන ඉඩක් (Flex 1) ලබා දී ඇත.
+              flex: 1, 
               child: pw.Container(
                 padding: const pw.EdgeInsets.all(5),
                 decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.5, color: PdfColors.grey700)),
                 child: pw.Column(
                   children: [
-                    _pdfSummaryRow('Total Weight', '${totalW.toStringAsFixed(1)} Kg', font, bold: true),
-                    _pdfSummaryRow('Tea Rate (1Kg)', 'Rs. ${b['teaRate'].toStringAsFixed(2)}', font), 
+                    // 'මුළු දළු බර', 'දළු කිලෝවක මිල', 'දළ ආදායම'
+                    _pdfSummaryRow('uq¿ o¿ nr', '${totalW.toStringAsFixed(1)} Kg', fmFont, engFont, bold: true),
+                    _pdfSummaryRow('o¿ lsf,dajl ñ,', 'Rs. ${b['teaRate'].toStringAsFixed(2)}', fmFont, engFont), 
                     pw.Divider(thickness: 0.5),
-                    _pdfSummaryRow('Gross Income', 'Rs. ${b['grossIncome'].toStringAsFixed(2)}', font, bold: true),
+                    _pdfSummaryRow('o< wdodhu', 'Rs. ${b['grossIncome'].toStringAsFixed(2)}', fmFont, engFont, bold: true),
                     pw.SizedBox(height: 5),
                     
-                    _pdfSummaryRow('Advances Total', '-${b['advTotal'].toStringAsFixed(2)}', font),
-                    _pdfSummaryRow('Fert. & Tea Pkt', '-${(b['f1Total'] + b['f2Total'] + b['t1Total'] + b['t2Total']).toStringAsFixed(2)}', font),
-                    _pdfSummaryRow('Transport', '-${b['transportCost'].toStringAsFixed(2)}', font),
+                    // 'මුළු අත්තිකාරම්', 'පොහොර සහ තේ කොළ', 'ප්‍රවාහන ගාස්තු', 'හිඟ මුදල්'
+                    _pdfSummaryRow('uq¿ w;a;sldrï', '-${b['advTotal'].toStringAsFixed(2)}', fmFont, engFont),
+                    _pdfSummaryRow('fmdfydr iy f;a fld<', '-${(b['f1Total'] + b['f2Total'] + b['t1Total'] + b['t2Total']).toStringAsFixed(2)}', fmFont, engFont),
+                    _pdfSummaryRow('m%jdyk .dia;=', '-${b['transportCost'].toStringAsFixed(2)}', fmFont, engFont),
                     if ((b['arrears'] ?? 0) > 0)
-                      _pdfSummaryRow('Arrears', '-${b['arrears'].toStringAsFixed(2)}', font),
+                      _pdfSummaryRow('ysÕ uqo,a', '-${b['arrears'].toStringAsFixed(2)}', fmFont, engFont),
                     
                     pw.Divider(thickness: 0.5),
-                    _pdfSummaryRow('Total Deduct.', '-${b['totalDeductions'].toStringAsFixed(2)}', font, bold: true),
+                    // 'මුළු අඩු කිරීම්'
+                    _pdfSummaryRow('uq¿ wvq lsÍï', '-${b['totalDeductions'].toStringAsFixed(2)}', fmFont, engFont, bold: true),
                     pw.Divider(thickness: 1.5),
-                    _pdfSummaryRow('NET PAYABLE', 'Rs. ${b['netPayable'].toStringAsFixed(2)}', font, bold: true),
+                    // 'ගෙවිය යුතු ශුද්ධ මුදල'
+                    _pdfSummaryRow('f.úh hq;= Y=oaO uqo,', 'Rs. ${b['netPayable'].toStringAsFixed(2)}', fmFont, engFont, bold: true),
                     pw.Divider(thickness: 1.5),
                   ]
                 )
@@ -541,16 +585,15 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
           ]
         ),
 
-        pw.Spacer(), 
+        pw.SizedBox(height: 15), 
         pw.Divider(thickness: 0.5),
         pw.Center(
-          child: pw.Text('Thank You! | Powered by OrbitView Innovations', style: pw.TextStyle(font: font, fontSize: 7, fontStyle: pw.FontStyle.italic, color: PdfColors.grey700))
+          child: pw.Text('Thank You! | Powered by OrbitView Innovations', style: pw.TextStyle(font: engFont, fontSize: 7, fontStyle: pw.FontStyle.italic, color: PdfColors.grey700))
         )
       ]
     );
   }
 
-  // 💡 යටට යන එක නවත්වන්න cell වල Padding (හිඩැස) අඩු කර ඇත
   pw.Widget _pdfCell(String text, pw.Font font, {bool bold = false}) {
     return pw.Container(
       padding: const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 1),
@@ -562,15 +605,14 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
     );
   }
 
-  // 💡 Summary එකෙත් Padding අඩු කර ඇත
-  pw.Widget _pdfSummaryRow(String label, String value, pw.Font font, {bool bold = false}) {
+  pw.Widget _pdfSummaryRow(String fmLabel, String value, pw.Font fmFont, pw.Font engFont, {bool bold = false}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 1.0),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(label, style: pw.TextStyle(font: font, fontSize: 8, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
-          pw.Text(value, style: pw.TextStyle(font: font, fontSize: 8, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+          pw.Text(fmLabel, style: pw.TextStyle(font: fmFont, fontSize: 11, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+          pw.Text(value, style: pw.TextStyle(font: engFont, fontSize: 8, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
         ],
       ),
     );

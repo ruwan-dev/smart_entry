@@ -81,6 +81,7 @@ flutter:
 
   assets:
     - assets/fonts/Iskoola Pota Regular.ttf
+    - assets/fonts/FM-Abhaya.ttf
     - assets/no_internet.json
 
 
