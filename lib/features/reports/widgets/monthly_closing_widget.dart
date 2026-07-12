@@ -30,6 +30,9 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
     _checkStatusAndCalculate();
   }
 
+  // ===========================================================================
+  // 🚀 FAST LOADING LOGIC (සමාන්තරව දත්ත ලබාගැනීම) 
+  // ===========================================================================
   Future<void> _checkStatusAndCalculate() async {
     setState(() {
       _isCalculating = true;
@@ -72,22 +75,43 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
       double transRate = (ratesDoc.data()?['transportRate'] ?? 0).toDouble();
 
       var customers = await FirebaseFirestore.instance.collection('Customers').get();
+      
+      String searchKey = "$_currentYear-${_selectedMonth.toString().padLeft(2, '0')}";
+      var allEntriesSnapshot = await FirebaseFirestore.instance.collection('DailyEntries')
+          .where('date', isGreaterThanOrEqualTo: "$searchKey-01")
+          .where('date', isLessThanOrEqualTo: "$searchKey-31")
+          .get();
+
+      Map<String, List<QueryDocumentSnapshot>> groupedEntries = {};
+      for (var doc in allEntriesSnapshot.docs) {
+        String cId = doc['customerId'];
+        if (!groupedEntries.containsKey(cId)) groupedEntries[cId] = [];
+        groupedEntries[cId]!.add(doc);
+      }
+
+      var prevBillFutures = customers.docs.map((customer) => 
+        FirebaseFirestore.instance.collection('FinalizedBills').doc("${customer.id}_$prevMonthKey").get()
+      ).toList();
+      var prevBillDocs = await Future.wait(prevBillFutures);
+      
+      Map<String, DocumentSnapshot> prevBillsMap = {};
+      for (int i = 0; i < customers.docs.length; i++) {
+        prevBillsMap[customers.docs[i].id] = prevBillDocs[i];
+      }
+
       List<Map<String, dynamic>> results = [];
 
-      String searchKey = "$_currentYear-${_selectedMonth.toString().padLeft(2, '0')}";
       for (var customer in customers.docs) {
-        var entries = await FirebaseFirestore.instance.collection('DailyEntries')
-            .where('customerId', isEqualTo: customer.id).get();
-        
-        var monthlyEntries = entries.docs.where((doc) => doc['date'].toString().startsWith(searchKey)).toList();
+        var monthlyEntries = groupedEntries[customer.id] ?? [];
         if (monthlyEntries.isEmpty) continue;
 
         monthlyEntries.sort((a, b) => a['date'].toString().compareTo(b['date'].toString()));
 
         double totalW = 0, totalAdv = 0, f1Q = 0, f2Q = 0, t1Q = 0, t2Q = 0;
         List<Map<String, dynamic>> rows = [];
+        
         for (var doc in monthlyEntries) {
-          var d = doc.data();
+          var d = doc.data() as Map<String, dynamic>;
           double w = (d['netWeight'] ?? 0).toDouble();
           double adv = (d['advanceAmount'] ?? 0).toDouble();
           double f1q = (d['fertilizer1Qty'] ?? 0).toDouble();
@@ -109,14 +133,11 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         }
 
         double lastMonthArrears = 0.0;
-        var prevBillDoc = await FirebaseFirestore.instance
-            .collection('FinalizedBills')
-            .doc("${customer.id}_$prevMonthKey")
-            .get();
-
-        if (prevBillDoc.exists) {
-          var prevBillData = prevBillDoc.data()?['billData'] ?? {};
-          double prevNetPayable = (prevBillData['netPayable'] ?? 0.0).toDouble();
+        var prevBillDoc = prevBillsMap[customer.id];
+        if (prevBillDoc != null && prevBillDoc.exists) {
+          var prevBillData = prevBillDoc.data() as Map<String, dynamic>? ?? {};
+          var billData = prevBillData['billData'] ?? {};
+          double prevNetPayable = (billData['netPayable'] ?? 0.0).toDouble();
           if (prevNetPayable < 0) {
             lastMonthArrears = prevNetPayable.abs();
           }
@@ -146,7 +167,10 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
 
       results.sort((a, b) => (int.tryParse(a['ref'].toString()) ?? 0).compareTo(int.tryParse(b['ref'].toString()) ?? 0));
       setState(() { _billingList = results; _isCalculating = false; });
-    } catch (e) { setState(() => _isCalculating = false); }
+    } catch (e) { 
+        print("Error: $e");
+        setState(() => _isCalculating = false); 
+    }
   }
 
   Future<void> _finalizeAndGeneratePDF() async {
@@ -154,11 +178,8 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
     setState(() => _isCalculating = true);
     final pdf = pw.Document();
     
-    // 💡 FM-Abhaya ෆොන්ට් එක Offline ක්‍රමයට load කිරීම
     final fmFontData = await rootBundle.load("assets/fonts/FM-Abhaya.ttf");
     final fmFont = pw.Font.ttf(fmFontData);
-    
-    // 💡 ඉංග්‍රීසි අකුරු සහ ඉලක්කම් සඳහා සාමාන්‍ය ෆොන්ට් එකක්
     final engFont = pw.Font.helvetica();
 
     try {
@@ -224,8 +245,13 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         });
       }
 
-      String customFileName = "${_currentYear}_${monthName}_Monthly_Bills.pdf";
-      await Printing.layoutPdf(onLayout: (format) async => pdf.save(), name: customFileName);
+      // 💡 නව PDF ගොනු නාමයේ ආකෘතිය: year_month_currenttime.pdf
+      String currentTime = DateFormat('hh_mm_ss_a').format(DateTime.now()); 
+      String customFileName = "${_currentYear}_${monthName}_$currentTime.pdf";
+      
+      // 🚀 🚀 🚀 ප්‍රධාන වෙනස මෙතැනයි 🚀 🚀 🚀
+      // Windows වලදී නම හරියටම Save As වෙන්න layoutPdf වෙනුවට sharePdf භාවිතා කර ඇත.
+      await Printing.sharePdf(bytes: await pdf.save(), filename: customFileName);
       
       _checkStatusAndCalculate();
     } catch (e) { 
@@ -235,42 +261,51 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
     }
   }
 
+  // ===========================================================================
+  // 🎨 UI COMPONENTS (Clean, Modern, Web-inspired Design + Skeleton)
+  // ===========================================================================
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildMonthSelector(),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
           _buildActionCard(),
-          if (_isAlreadyFinalized && _monthlySummaryData != null) _buildSummaryCard(),
+          if (_isAlreadyFinalized && _monthlySummaryData != null) ...[
+             const SizedBox(height: 20),
+             _buildSummaryCard(),
+          ]
         ],
       ),
     );
   }
 
-  // --- UI Components ---
   Widget _buildMonthSelector() {
     List<String> months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     return Card(
+      color: Colors.white,
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Row(
           children: [
-            const Icon(Icons.calendar_month, size: 20, color: Colors.indigo),
+            const Icon(Icons.calendar_today_outlined, size: 20, color: Colors.black54),
             const SizedBox(width: 15),
-            Text("$_currentYear", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-            const SizedBox(width: 10),
-            const Text("|", style: TextStyle(color: Colors.grey)),
-            const SizedBox(width: 10),
+            Text("$_currentYear", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87)),
+            const SizedBox(width: 15),
+            Container(width: 1, height: 20, color: Colors.grey.shade300),
+            const SizedBox(width: 15),
             Expanded(
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<int>(
                   value: _selectedMonth,
                   isExpanded: true,
-                  items: List.generate(12, (i) => DropdownMenuItem(value: i + 1, child: Text(months[i]))),
+                  icon: const Icon(Icons.keyboard_arrow_down, color: Colors.black54),
+                  items: List.generate(12, (i) => DropdownMenuItem(value: i + 1, child: Text(months[i], style: const TextStyle(fontSize: 15, color: Colors.black87)))),
                   onChanged: (val) { setState(() => _selectedMonth = val!); _checkStatusAndCalculate(); },
                 ),
               ),
@@ -283,87 +318,144 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
 
   Widget _buildActionCard() {
     bool hasData = _billingList.isNotEmpty;
-    Color color = _isAlreadyFinalized ? Colors.green.shade800 : (_ratesMissing ? Colors.orange.shade800 : Colors.indigo.shade900);
-    return Container(
-      width: double.infinity, padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(15)),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(_isAlreadyFinalized ? Icons.verified : (_ratesMissing ? Icons.warning : Icons.account_balance_wallet), color: Colors.white, size: 24),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  _isAlreadyFinalized ? "ගිණුම් පියවා අවසන්. වාර්තා නැවත නැරඹිය හැක." : (_ratesMissing ? "Rates ඇතුළත් කර නැත." : "මාසික ගිණුම් පියවා වාර්තා සකසන්න."),
-                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+    Color actionColor = _isAlreadyFinalized ? Colors.green.shade600 : (_ratesMissing ? Colors.orange.shade600 : Colors.blue.shade600);
+    
+    return Card(
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: actionColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                  child: Icon(
+                    _isAlreadyFinalized ? Icons.check_circle_outline : (_ratesMissing ? Icons.warning_amber_rounded : Icons.account_balance_wallet_outlined), 
+                    color: actionColor, size: 24
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isAlreadyFinalized ? "Finalized" : (_ratesMissing ? "Rates Missing" : "Ready to Close"),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: actionColor),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _isAlreadyFinalized ? "මෙම මාසයේ ගිණුම් පියවා අවසන් කර ඇත. වාර්තා නැවත නැරඹිය හැක." : (_ratesMissing ? "කරුණාකර මෙම මාසය සඳහා අදාළ Rates ඇතුළත් කරන්න." : "දත්ත සූදානම්. මාසික ගිණුම් පියවා වාර්තා සකසන්න."),
+                        style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            
+            // 💡 Skeleton Loader එක
+            if (_isCalculating)
+              _SkeletonPulse(
+                child: Column(
+                  children: [
+                    Container(
+                      width: double.infinity, height: 48,
+                      decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: 180, height: 12,
+                      decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(6)),
+                    ),
+                  ],
+                ),
+              )
+            else
+              SizedBox(
+                width: double.infinity, height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: (!hasData && !_isAlreadyFinalized) ? null : _finalizeAndGeneratePDF,
+                  icon: Icon(_isAlreadyFinalized ? Icons.picture_as_pdf_outlined : Icons.save_alt_rounded, size: 20),
+                  label: Text(_isAlreadyFinalized ? "VIEW ALL BILLS PDF" : "FINALIZE & SAVE ALL", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: actionColor, 
+                    foregroundColor: Colors.white, 
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                  ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          if (_isCalculating)
-            const Column(children: [CircularProgressIndicator(color: Colors.white), SizedBox(height: 10), Text("දත්ත සකසමින් පවතිනවා...", style: TextStyle(color: Colors.white, fontSize: 12))])
-          else
-            SizedBox(
-              width: double.infinity, height: 50,
-              child: ElevatedButton.icon(
-                onPressed: (!hasData && !_isAlreadyFinalized) ? null : _finalizeAndGeneratePDF,
-                icon: Icon(_isAlreadyFinalized ? Icons.picture_as_pdf : Icons.save_alt, size: 20),
-                label: Text(_isAlreadyFinalized ? "VIEW ALL BILLS PDF" : "FINALIZE & SAVE ALL"),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: color, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildSummaryCard() {
     var s = _monthlySummaryData!;
-    return Container(
-      margin: const EdgeInsets.all(15), padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.green.shade100)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("මාසික ව්‍යාපාරික සාරාංශය", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)),
-          const Divider(height: 20),
-          _row("මුළු දළු බර (Total Weight)", "${(s['totalWeight'] ?? 0).toStringAsFixed(1)} Kg"),
-          _row("මුළු ආදායම (Gross Income)", "Rs. ${(s['totalGross'] ?? 0).toStringAsFixed(2)}"),
-          const SizedBox(height: 12),
-          const Row(children: [
-            Expanded(flex: 4, child: Text("Breakdown", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.redAccent))),
-            Expanded(flex: 2, child: Text("Qty", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.redAccent))),
-            Expanded(flex: 3, child: Text("Amount", textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.redAccent))),
-          ]),
-          const Divider(),
-          _itemRow("Advance", "-", s['totalAdvance']),
-          _itemRow("Fertilizer 01", s['totalF1Qty'], s['totalF1Amt']),
-          _itemRow("Fertilizer 02", s['totalF2Qty'], s['totalF2Amt']),
-          _itemRow("Tea Pkt 01", s['totalT1Qty'], s['totalT1Amt']),
-          _itemRow("Tea Pkt 02", s['totalT2Qty'], s['totalT2Amt']),
-          _itemRow("Transport", "-", s['totalTransport']),
-          const Divider(height: 25),
-          const Text("Payments Summary", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo)),
-          _row("ගෙවීමට ඇති (+) ", "Rs. ${(s['totalPositiveNet'] ?? 0).toStringAsFixed(2)}", color: Colors.blue.shade900),
-          _row("අයවීමට ඇති (-) ", "Rs. ${(s['totalNegativeNet'] ?? 0).toStringAsFixed(2)}", color: Colors.red.shade900),
-          const Divider(height: 20),
-          _row("ශුද්ධ ලාභ/අලාභය", "Rs. ${(s['totalNet'] ?? 0).toStringAsFixed(2)}", isBold: true),
-        ],
+    return Card(
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("මාසික ව්‍යාපාරික සාරාංශය", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+            const SizedBox(height: 20),
+            _row("මුළු දළු බර (Total Weight)", "${(s['totalWeight'] ?? 0).toStringAsFixed(1)} Kg", isBold: true),
+            _row("මුළු ආදායම (Gross Income)", "Rs. ${(s['totalGross'] ?? 0).toStringAsFixed(2)}", isBold: true),
+            const SizedBox(height: 20),
+            
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)),
+              child: Column(
+                children: [
+                  const Row(children: [
+                    Expanded(flex: 4, child: Text("Breakdown", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black54))),
+                    Expanded(flex: 2, child: Text("Qty", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black54))),
+                    Expanded(flex: 3, child: Text("Amount", textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black54))),
+                  ]),
+                  const Divider(color: Colors.black12, height: 24),
+                  _itemRow("Advance", "-", s['totalAdvance']),
+                  _itemRow("Fertilizer 01", s['totalF1Qty'], s['totalF1Amt']),
+                  _itemRow("Fertilizer 02", s['totalF2Qty'], s['totalF2Amt']),
+                  _itemRow("Tea Pkt 01", s['totalT1Qty'], s['totalT1Amt']),
+                  _itemRow("Tea Pkt 02", s['totalT2Qty'], s['totalT2Amt']),
+                  _itemRow("Transport", "-", s['totalTransport']),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 24),
+            const Text("Payments Summary", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87)),
+            const SizedBox(height: 12),
+            _row("ගෙවීමට ඇති (+) ", "Rs. ${(s['totalPositiveNet'] ?? 0).toStringAsFixed(2)}", color: Colors.blue.shade700),
+            _row("අයවීමට ඇති (-) ", "Rs. ${(s['totalNegativeNet'] ?? 0).toStringAsFixed(2)}", color: Colors.red.shade700),
+            const Divider(height: 24, color: Colors.black12),
+            _row("ශුද්ධ ලාභ/අලාභය", "Rs. ${(s['totalNet'] ?? 0).toStringAsFixed(2)}", isBold: true, color: Colors.black87),
+          ],
+        ),
       ),
     );
   }
 
   Widget _row(String label, String val, {bool isBold = false, Color? color}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(fontSize: 12, fontWeight: isBold ? FontWeight.bold : FontWeight.normal)),
-          Text(val, style: TextStyle(fontSize: 12, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: color ?? (isBold ? Colors.green.shade900 : Colors.black))),
+          Text(label, style: TextStyle(fontSize: 14, color: Colors.black87, fontWeight: isBold ? FontWeight.bold : FontWeight.normal)),
+          Text(val, style: TextStyle(fontSize: 14, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: color ?? Colors.black87)),
         ],
       ),
     );
@@ -372,17 +464,17 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
   Widget _itemRow(String label, dynamic qty, dynamic amt) {
     String qtyStr = (qty is String) ? qty : (qty > 0 ? qty.toStringAsFixed(0) : "-");
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(children: [
-        Expanded(flex: 4, child: Text(label, style: const TextStyle(fontSize: 12))),
-        Expanded(flex: 2, child: Text(qtyStr, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12))),
-        Expanded(flex: 3, child: Text("Rs. ${(amt ?? 0).toStringAsFixed(2)}", textAlign: TextAlign.right, style: const TextStyle(fontSize: 12))),
+        Expanded(flex: 4, child: Text(label, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+        Expanded(flex: 2, child: Text(qtyStr, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+        Expanded(flex: 3, child: Text("Rs. ${(amt ?? 0).toStringAsFixed(2)}", textAlign: TextAlign.right, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.black87))),
       ]),
     );
   }
 
   // ===========================================================================
-  // 🌟 FM FONTS යොදාගෙන නිර්මාණය කළ බිල්පත (අකුරු නොකැඩී ප්‍රින්ට් වේ)
+  // 🌟 PDF GENERATION LOGIC (NO CHANGES)
   // ===========================================================================
   pw.Widget _buildPdfBill(Map<String, dynamic> item, pw.Font engFont, pw.Font fmFont) {
     var b = item['bill'];
@@ -441,7 +533,6 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        // --- HEADER (English Font) ---
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           crossAxisAlignment: pw.CrossAxisAlignment.end,
@@ -465,7 +556,6 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         ),
         pw.SizedBox(height: 5),
 
-        // --- 1 to 31 GRID ---
         pw.Table(
           border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey700),
           defaultColumnWidth: const pw.FlexColumnWidth(), 
@@ -473,7 +563,6 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         ),
         pw.SizedBox(height: 10),
 
-        // --- SUMMARY & DEDUCTIONS ---
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
@@ -484,13 +573,11 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    // 'අඩු කිරීම් විස්තරය:'
-                    pw.Text('wvq lsÍï úia;rh:', style: pw.TextStyle(font: fmFont, fontSize: 12, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
+                    pw.Text('wvq lsÍï úia;rh', style: pw.TextStyle(font: fmFont, fontSize: 12, fontWeight: pw.FontWeight.bold, decoration: pw.TextDecoration.underline)),
                     pw.SizedBox(height: 5),
                     
                     if (b['advTotal'] > 0) ...[
                       pw.Row(children: [
-                        // 'අත්තිකාරම් '
                         pw.Text('w;a;sldrï ', style: pw.TextStyle(font: fmFont, fontSize: 11, fontWeight: pw.FontWeight.bold)),
                         pw.Text('(Total: Rs.${b['advTotal'].toStringAsFixed(2)})', style: pw.TextStyle(font: engFont, fontSize: 8, fontWeight: pw.FontWeight.bold)),
                       ]),
@@ -504,35 +591,30 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
 
                     if (b['f1Qty'] > 0) 
                       pw.Row(children: [
-                        // 'පොහොර 01 : '
                         pw.Text('fmdfydr 01 : ', style: pw.TextStyle(font: fmFont, fontSize: 10)),
                         pw.Text('${b['f1Qty']} x Rs.${(b['f1Total']/b['f1Qty']).toStringAsFixed(2)} = Rs.${b['f1Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: engFont, fontSize: 8)),
                       ]),
 
                     if (b['f2Qty'] > 0) 
                       pw.Row(children: [
-                        // 'පොහොර 02 : '
                         pw.Text('fmdfydr 02 : ', style: pw.TextStyle(font: fmFont, fontSize: 10)),
                         pw.Text('${b['f2Qty']} x Rs.${(b['f2Total']/b['f2Qty']).toStringAsFixed(2)} = Rs.${b['f2Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: engFont, fontSize: 8)),
                       ]),
 
                     if (b['t1Qty'] > 0) 
                       pw.Row(children: [
-                        // 'තේ කොළ 01 : '
-                        pw.Text('f;a fld< 01 : ', style: pw.TextStyle(font: fmFont, fontSize: 10)),
+                        pw.Text('f;a fld< 01  ', style: pw.TextStyle(font: fmFont, fontSize: 10)),
                         pw.Text('${b['t1Qty']} x Rs.${(b['t1Total']/b['t1Qty']).toStringAsFixed(2)} = Rs.${b['t1Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: engFont, fontSize: 8)),
                       ]),
 
                     if (b['t2Qty'] > 0) 
                       pw.Row(children: [
-                        // 'තේ කොළ 02 : '
                         pw.Text('f;a fld< 02 : ', style: pw.TextStyle(font: fmFont, fontSize: 10)),
                         pw.Text('${b['t2Qty']} x Rs.${(b['t2Total']/b['t2Qty']).toStringAsFixed(2)} = Rs.${b['t2Total'].toStringAsFixed(2)}', style: pw.TextStyle(font: engFont, fontSize: 8)),
                       ]),
                     
                     pw.SizedBox(height: 4),
                     pw.Row(children: [
-                      // 'ප්‍රවාහන ගාස්තු '
                       pw.Text('m%jdyk .dia;= ', style: pw.TextStyle(font: fmFont, fontSize: 10)),
                       pw.Text('(${totalW.toStringAsFixed(1)}kg) : Rs.${b['transportCost'].toStringAsFixed(2)}', style: pw.TextStyle(font: engFont, fontSize: 8)),
                     ]),
@@ -540,8 +622,7 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
                     if ((b['arrears'] ?? 0) > 0) ...[
                       pw.SizedBox(height: 2),
                       pw.Row(children: [
-                        // 'පසුගිය මාසයේ හිඟ මුදල් : '
-                        pw.Text('miq.sh udifha ysÕ uqo,a : ', style: pw.TextStyle(font: fmFont, fontSize: 10, color: PdfColors.red800)),
+                        pw.Text('miq.sh udifha ysÕ uqo,a  ', style: pw.TextStyle(font: fmFont, fontSize: 10, color: PdfColors.red800)),
                         pw.Text('Rs.${b['arrears'].toStringAsFixed(2)}', style: pw.TextStyle(font: engFont, fontSize: 8, color: PdfColors.red800)),
                       ]),
                     ]
@@ -557,14 +638,12 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
                 decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.5, color: PdfColors.grey700)),
                 child: pw.Column(
                   children: [
-                    // 'මුළු දළු බර', 'දළු කිලෝවක මිල', 'දළ ආදායම'
                     _pdfSummaryRow('uq¿ o¿ nr', '${totalW.toStringAsFixed(1)} Kg', fmFont, engFont, bold: true),
                     _pdfSummaryRow('o¿ lsf,dajl ñ,', 'Rs. ${b['teaRate'].toStringAsFixed(2)}', fmFont, engFont), 
                     pw.Divider(thickness: 0.5),
                     _pdfSummaryRow('o< wdodhu', 'Rs. ${b['grossIncome'].toStringAsFixed(2)}', fmFont, engFont, bold: true),
                     pw.SizedBox(height: 5),
                     
-                    // 'මුළු අත්තිකාරම්', 'පොහොර සහ තේ කොළ', 'ප්‍රවාහන ගාස්තු', 'හිඟ මුදල්'
                     _pdfSummaryRow('uq¿ w;a;sldrï', '-${b['advTotal'].toStringAsFixed(2)}', fmFont, engFont),
                     _pdfSummaryRow('fmdfydr iy f;a fld<', '-${(b['f1Total'] + b['f2Total'] + b['t1Total'] + b['t2Total']).toStringAsFixed(2)}', fmFont, engFont),
                     _pdfSummaryRow('m%jdyk .dia;=', '-${b['transportCost'].toStringAsFixed(2)}', fmFont, engFont),
@@ -572,10 +651,8 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
                       _pdfSummaryRow('ysÕ uqo,a', '-${b['arrears'].toStringAsFixed(2)}', fmFont, engFont),
                     
                     pw.Divider(thickness: 0.5),
-                    // 'මුළු අඩු කිරීම්'
                     _pdfSummaryRow('uq¿ wvq lsÍï', '-${b['totalDeductions'].toStringAsFixed(2)}', fmFont, engFont, bold: true),
                     pw.Divider(thickness: 1.5),
-                    // 'ගෙවිය යුතු ශුද්ධ මුදල'
                     _pdfSummaryRow('f.úh hq;= Y=oaO uqo,', 'Rs. ${b['netPayable'].toStringAsFixed(2)}', fmFont, engFont, bold: true),
                     pw.Divider(thickness: 1.5),
                   ]
@@ -615,6 +692,41 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
           pw.Text(value, style: pw.TextStyle(font: engFont, fontSize: 8, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
         ],
       ),
+    );
+  }
+}
+
+// ===========================================================================
+// 🌟 CUSTOM SKELETON LOADER WIDGET (No External Packages Required)
+// ===========================================================================
+class _SkeletonPulse extends StatefulWidget {
+  final Widget child;
+  const _SkeletonPulse({required this.child});
+
+  @override
+  __SkeletonPulseState createState() => __SkeletonPulseState();
+}
+
+class __SkeletonPulseState extends State<_SkeletonPulse> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.4, end: 1.0).animate(_controller),
+      child: widget.child,
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // Firestore import කරන්න
-import '../dashboard/dashboard_screen.dart';
+import 'package:smart_entry/features/dashboard/dashboard_screen.dart';
+// (හෝ DashboardScreen එක තියෙන නිවැරදි path එක)
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,7 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     String inputPassword = _passwordController.text.trim();
 
-    if (inputPassword.isEmpty) {
+    if (inputPassword.isEmpty) {S
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('කරුණාකර මුරපදය ඇතුළත් කරන්න.')),
       );
@@ -50,7 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
         if (mounted) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const DashboardScreen()),
+            MaterialPageRoute(builder: (context) => DashboardScreen()),
           );
         }
       } else {

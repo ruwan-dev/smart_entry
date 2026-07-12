@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Status bar වර්ණය වෙනස් කිරීමට
 import 'package:smart_entry/core/customer/customer_form_screen.dart';
 import 'package:smart_entry/core/entries/daily_entries_screen.dart';
 
@@ -6,7 +7,6 @@ import '../settings/settings_screen.dart';
 import 'overview_screen.dart'; 
 import '../reports/reports_screen.dart'; 
 
-// Network Service එක import කරගන්න
 import '../../core/network_service.dart'; 
 
 class DashboardScreen extends StatefulWidget {
@@ -27,6 +27,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     const SettingsScreen(),     // 4. Settings
   ];
 
+  // App එකේ ප්‍රධාන Theme එක නිල් (Blue)
+  final Color primaryAppColor = const Color(0xFF1976D2); 
+
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -38,75 +41,105 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
+        // දුරකථනයේ ඉහළම තීරුව (Status Bar) නිල් පැහැ ගැන්වීම
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: primaryAppColor,
+          statusBarIconBrightness: Brightness.light, 
+        ),
+        elevation: 0,
+        centerTitle: false,
+        backgroundColor: primaryAppColor, // AppBar හි ප්‍රධාන වර්ණය නිල් (Blue)
+        foregroundColor: Colors.white,    // අකුරු වල වර්ණය සුදු
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Smart Entry'),
+            const Text('Smart Entry', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5)),
             
-            // Online/Offline Status එක Text සහ Dot එක සමඟ පෙන්වීම
-            ValueListenableBuilder<bool>(
-              valueListenable: NetworkService().connectionStatus,
-              builder: (context, isOnline, child) {
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // ඔයා කලින් කිව්ව විදිහටම සකස් කළ නිසල Dot එක
-                    _StatusDot(isOnline: isOnline),
-                    const SizedBox(width: 8),
-                    // කිසිදු border එකක් නැතිව text එක පමණක් මෙතනින් පෙන්වයි
-                    Text(
-                      isOnline ? 'Online' : 'Offline',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: isOnline ? Colors.greenAccent : Colors.redAccent,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: ValueListenableBuilder<bool>(
+                valueListenable: NetworkService().connectionStatus,
+                builder: (context, isOnline, child) {
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _StatusDot(isOnline: isOnline),
+                      const SizedBox(width: 8),
+                      Text(
+                        isOnline ? 'Online' : 'Offline',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: isOnline ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA),
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
           ],
         ),
-        backgroundColor: Theme.of(context).primaryColor,
-        foregroundColor: Colors.white,
       ),
       body: _screens[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed, 
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        selectedItemColor: Theme.of(context).primaryColor,
-        unselectedItemColor: Colors.grey, 
-        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard, color: Colors.green, size: 28), 
-            label: 'Overview',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people, color: Colors.red, size: 28),
-            label: 'Customers',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.edit_document, color: Color.fromARGB(255, 7, 73, 1), size: 28),
-            label: 'Entries',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.picture_as_pdf, color: Colors.redAccent, size: 28),
-            label: 'Reports',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings, color: Color.fromARGB(255, 104, 2, 99), size: 28),
-            label: 'Settings',
-          ),
-        ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 20,
+              offset: const Offset(0, -5),
+            )
+          ]
+        ),
+        child: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed, 
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          backgroundColor: Colors.white,
+          elevation: 0,
+          selectedItemColor: primaryAppColor, // Active Icon එකේ වර්ණය නිල්
+          unselectedItemColor: Colors.blueGrey.shade300, 
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
+          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 10),
+          showUnselectedLabels: true,
+          items: const [
+            BottomNavigationBarItem(
+              activeIcon: Icon(Icons.dashboard_rounded, size: 28),
+              icon: Icon(Icons.dashboard_outlined, size: 24), 
+              label: 'Overview',
+            ),
+            BottomNavigationBarItem(
+              activeIcon: Icon(Icons.people_alt_rounded, size: 28),
+              icon: Icon(Icons.people_alt_outlined, size: 24),
+              label: 'Customers',
+            ),
+            BottomNavigationBarItem(
+              activeIcon: Icon(Icons.edit_document, size: 28),
+              icon: Icon(Icons.edit_document, size: 24),
+              label: 'Entries',
+            ),
+            BottomNavigationBarItem(
+              activeIcon: Icon(Icons.picture_as_pdf_rounded, size: 28),
+              icon: Icon(Icons.picture_as_pdf_outlined, size: 24),
+              label: 'Reports',
+            ),
+            BottomNavigationBarItem(
+              activeIcon: Icon(Icons.settings_rounded, size: 28),
+              icon: Icon(Icons.settings_outlined, size: 24),
+              label: 'Settings',
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// --- Signal Ripple Animation එක සහිත නිසල Dot Widget එක ---
 class _StatusDot extends StatefulWidget {
   final bool isOnline;
   const _StatusDot({required this.isOnline});
@@ -135,41 +168,36 @@ class _StatusDotState extends State<_StatusDot> with SingleTickerProviderStateMi
 
   @override
   Widget build(BuildContext context) {
-    Color statusColor = widget.isOnline ? Colors.greenAccent : Colors.redAccent;
+    Color statusColor = widget.isOnline ? const Color(0xFF34D399) : const Color(0xFFF87171);
 
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
         return SizedBox(
-          width: 18, // Text එක අසලටම තිබීමට width එක අඩු කරන ලදී
-          height: 18,
+          width: 14, 
+          height: 14,
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // පිටතට විහිදෙන රවුම (Ripple Effect)
               Container(
-                width: 18 * _controller.value,
-                height: 18 * _controller.value,
+                width: 14 * _controller.value,
+                height: 14 * _controller.value,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: statusColor.withOpacity(1 - _controller.value),
-                    width: 2,
+                    width: 1.5,
                   ),
                 ),
               ),
-              // මැද ස්ථාවරව පවතින Dot එක
               Container(
-                width: 7,
-                height: 7,
+                width: 6,
+                height: 6,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: statusColor,
                   boxShadow: [
-                    BoxShadow(
-                      color: statusColor.withOpacity(0.4),
-                      blurRadius: 3,
-                    ),
+                    BoxShadow(color: statusColor.withOpacity(0.4), blurRadius: 3),
                   ],
                 ),
               ),

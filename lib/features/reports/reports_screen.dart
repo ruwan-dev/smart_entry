@@ -5,7 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-// අලුතින් හදපු widget එක මෙතනට import කරගන්න
+// අලුතින් හදපු widget එක මෙතනට import කරගන්න[cite: 2]
 import 'widgets/monthly_closing_widget.dart'; 
 
 class ReportsScreen extends StatefulWidget {
@@ -34,6 +34,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     'Advances & Items'
   ];
 
+  // App Theme Color
+  final Color primaryAppColor = const Color(0xFF1976D2);
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +56,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
       initialDate: isStart ? _startDate : _endDate,
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: primaryAppColor,
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) {
       setState(() {
@@ -65,7 +80,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  // --- PDF වාර්තා සැකසීමේ Logic එක ---
+  // --- PDF වාර්තා සැකසීමේ Logic එක (කිසිදු වෙනසක් කර නොමැත) ---[cite: 2]
   Future<void> _generatePdfReport() async {
     if (_selectedReportType == 'Customer Wise' && _selectedCustomerId == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('කරුණාකර පාරිභෝගිකයෙකු තෝරන්න')));
@@ -122,10 +137,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
       final pdf = pw.Document();
       
-      double totalWeight = 0, totalAdvance = 0;
-      double totalFertValue = 0, totalTeaValue = 0;
-      double grandTotalDeductions = 0;
-
       bool showWeight = ['Daily All Data', 'Customer Wise', 'Tea Leaves Only'].contains(_selectedReportType);
       bool showAdvance = ['Daily All Data', 'Customer Wise', 'Advances & Items'].contains(_selectedReportType);
       bool showFertilizer = ['Daily All Data', 'Customer Wise', 'Advances & Items', 'Fertilizer Wise'].contains(_selectedReportType);
@@ -189,120 +200,248 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(title: const Text('වාර්තා සහ ගිණුම් පියවීම')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    // 1. DefaultTabController මගින් පිටුව කොටස් 2කට වෙන් කිරීම
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF4F6F8), // ආකර්ෂණීය ලා අළු පසුබිම
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF1F2937), // තද අළු පැහැ අකුරු
+          elevation: 0,
+          title: const Text('වාර්තා සහ ගිණුම් පියවීම', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
+          bottom: TabBar(
+            labelColor: primaryAppColor,
+            unselectedLabelColor: Colors.blueGrey.shade400,
+            indicatorColor: primaryAppColor,
+            indicatorWeight: 4,
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            tabs: const [
+              Tab(text: 'ගිණුම් පියවීම (Closing)'),
+              Tab(text: 'PDF වාර්තා'),
+            ],
+          ),
+        ),
+        body: TabBarView(
           children: [
-            // --- 1. මාසික ගිණුම් පියවීම (Closing Section) ---
-            const Text('මාසික ගිණුම් අවසන් කිරීම (Closing)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            const MonthlyClosingWidget(), // මෙතැනදී අලුත් component එක call කරනවා
+            // 1 වැනි Tab එක: මාසික ගිණුම් පියවීම
+            _buildClosingTab(),
             
-            const SizedBox(height: 30),
-            const Divider(thickness: 2),
-            const SizedBox(height: 20),
-
-            // --- 2. PDF වාර්තා ලබාගැනීමේ කොටස ---
-            const Text('PDF වාර්තා ලබාගන්න', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            
-            _buildDatePickerSection(),
-            const SizedBox(height: 20),
-            
-            const Text('වාර්තා වර්ගය', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            _buildReportTypeSelector(),
-
-            if (_selectedReportType == 'Customer Wise') _buildCustomerSelector(),
-
-            const SizedBox(height: 40),
-            _buildPdfButton(),
+            // 2 වැනි Tab එක: PDF වාර්තා ලබාගැනීම
+            _buildPdfTab(),
           ],
         ),
       ),
     );
   }
 
-  // --- UI Helper Widgets (කේතය පිරිසිදුව තබා ගැනීමට) ---
+  // --- Tab 1: ගිණුම් පියවීම ---
+  Widget _buildClosingTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('මාසික ගිණුම් අවසන් කිරීම', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1F2937))),
+          const SizedBox(height: 8),
+          const Text('මෙහිදී අදාළ මාසයේ සියලුම දත්ත පරීක්ෂා කර ස්ථිර කිරීම සිදු කෙරේ.', style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
+          const SizedBox(height: 24),
+          
+          // Original widget එක අලංකාර Container එකකට ඇතුළත් කර ඇත
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ]
+            ),
+            child: const MonthlyClosingWidget(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Tab 2: PDF වාර්තා ---
+  Widget _buildPdfTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('PDF වාර්තා ලබාගැනීම', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1F2937))),
+          const SizedBox(height: 8),
+          const Text('ඔබට අවශ්‍ය දින පරාසය සහ වාර්තා වර්ගය තෝරා වාර්තා බාගත කරගන්න.', style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
+          const SizedBox(height: 24),
+          
+          // සැකසුම් කොටස (Form Section)
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ]
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('දින පරාසය', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF374151))),
+                const SizedBox(height: 12),
+                _buildDatePickerSection(),
+                
+                const SizedBox(height: 24),
+                const Text('වාර්තා වර්ගය', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF374151))),
+                const SizedBox(height: 12),
+                _buildDropdown(
+                  _selectedReportType, 
+                  _reportTypes, 
+                  (val) => setState(() { 
+                    _selectedReportType = val!; 
+                    if(val != 'Customer Wise') _selectedCustomerId = null; 
+                  })
+                ),
+
+                if (_selectedReportType == 'Customer Wise') ...[
+                  const SizedBox(height: 24),
+                  const Text('පාරිභෝගිකයා තෝරන්න', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF374151))),
+                  const SizedBox(height: 12),
+                  _buildCustomerDropdown(),
+                ],
+
+                const SizedBox(height: 40),
+                _buildPdfButton(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- UI Helper Widgets ---
 
   Widget _buildDatePickerSection() {
     return Row(
       children: [
-        Expanded(child: _dateTile('මුල', _startDate, true)),
-        const SizedBox(width: 15),
-        Expanded(child: _dateTile('අග', _endDate, false)),
+        Expanded(child: _dateTile('මුල දින', _startDate, true)),
+        const SizedBox(width: 16),
+        Expanded(child: _dateTile('අවසාන දින', _endDate, false)),
       ],
     );
   }
 
+  // නවීන පෙනුමකින් යුත් Date Picker Tile
   Widget _dateTile(String label, DateTime date, bool isStart) {
     return InkWell(
       onTap: () => _selectDate(context, isStart),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white, 
+          border: Border.all(color: Colors.grey.shade300), 
+          borderRadius: BorderRadius.circular(12)
+        ),
+        child: Row(
           children: [
-            Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            Text(DateFormat('yyyy-MM-dd').format(date), style: const TextStyle(fontWeight: FontWeight.bold)),
+            Icon(Icons.calendar_month_rounded, color: primaryAppColor, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(DateFormat('yyyy-MM-dd').format(date), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF1F2937))),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildReportTypeSelector() {
+  // නවීන පෙනුමකින් යුත් Dropdown Component
+  Widget _buildDropdown(String value, List<String> items, Function(String?) onChanged) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white, 
+        border: Border.all(color: Colors.grey.shade300), 
+        borderRadius: BorderRadius.circular(12)
+      ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          value: _selectedReportType,
+          value: value,
           isExpanded: true,
-          items: _reportTypes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-          onChanged: (val) => setState(() { _selectedReportType = val!; if(val != 'Customer Wise') _selectedCustomerId = null; }),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.blueGrey),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1F2937)),
+          items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+          onChanged: onChanged,
         ),
       ),
     );
   }
 
-  Widget _buildCustomerSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 20),
-        const Text('පාරිභෝගිකයා තෝරන්න', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: _selectedCustomerId,
-              hint: const Text('පාරිභෝගිකයෙකු තෝරන්න'),
-              isExpanded: true,
-              items: _customers.map((doc) => DropdownMenuItem(value: doc.id, child: Text(doc['name'] ?? ''))).toList(),
-              onChanged: (val) => setState(() => _selectedCustomerId = val),
-            ),
-          ),
+  Widget _buildCustomerDropdown() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white, 
+        border: Border.all(color: Colors.grey.shade300), 
+        borderRadius: BorderRadius.circular(12)
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedCustomerId,
+          hint: const Text('පාරිභෝගිකයෙකු තෝරන්න', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          isExpanded: true,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.blueGrey),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1F2937)),
+          items: _customers.map((doc) => DropdownMenuItem(value: doc.id, child: Text(doc['name'] ?? ''))).toList(),
+          onChanged: (val) => setState(() => _selectedCustomerId = val),
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildPdfButton() {
     return SizedBox(
-      width: double.infinity, height: 52,
-      child: ElevatedButton.icon(
+      width: double.infinity, height: 56,
+      child: ElevatedButton(
         onPressed: _isLoading ? null : _generatePdfReport,
-        icon: _isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.picture_as_pdf),
-        label: const Text('PDF වාර්තාව ලබාගන්න', style: TextStyle(fontWeight: FontWeight.bold)),
-        style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryAppColor,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        child: _isLoading 
+            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white))
+            : const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.download_rounded, size: 22),
+                  SizedBox(width: 10),
+                  Text('PDF වාර්තාව ලබාගන්න', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)),
+                ],
+              ),
       ),
     );
   }

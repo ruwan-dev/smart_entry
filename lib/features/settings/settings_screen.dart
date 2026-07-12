@@ -48,6 +48,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Backup Loading State
   bool _isLoadingBackup = false;
 
+  // Pagination Variables for Table
+  int _currentRatesPage = 0;
+  final int _ratesPerPage = 5;
+
+  // App Theme Color
+  final Color primaryAppColor = const Color(0xFF1976D2);
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +65,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     
     _loadGlobalPrices();
   }
+
+  // ---------------------------------------------------------
+  // LOGICS ( කිසිදු වෙනසක් කර නොමැත )
+  // ---------------------------------------------------------
 
   Future<void> _loadGlobalPrices() async {
     try {
@@ -76,7 +87,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
   
-  // --- Database Backup (Web සඳහා) ---
   dynamic _sanitizeDataForJson(dynamic data) {
     if (data is Timestamp) {
       return data.toDate().toIso8601String();
@@ -137,7 +147,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // --- මුරපදය වෙනස් කිරීමේ Logic එක ---
   Future<void> _changePassword() async {
     if (_passwordFormKey.currentState!.validate()) {
       setState(() { _isLoadingPassword = true; });
@@ -173,7 +182,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // --- මාසික ගාස්තු සුරැකීම ---
   Future<void> _saveMonthlyRates() async {
     if (_monthlyFormKey.currentState!.validate()) {
       setState(() { _isLoadingMonthly = true; });
@@ -202,7 +210,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // --- ස්ථිර (Global) අමතර භාණ්ඩ මිල සුරැකීම ---
   Future<void> _saveGlobalPrices() async {
     if (_globalFormKey.currentState!.validate()) {
       setState(() { _isLoadingGlobal = true; });
@@ -224,18 +231,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // --- මාසික දත්ත මකා දැමීම ---
   Future<void> _deleteRate(String docId) async {
     bool confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('මකා දමන්නද?'),
+        title: const Text('මකා දමන්නද?', style: TextStyle(fontWeight: FontWeight.bold)),
         content: const Text('ඔබට විශ්වාසද මෙම මාසයේ ගාස්තු විස්තර මකා දැමිය යුතුයි කියා?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('නැහැ')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('නැහැ', style: TextStyle(color: Colors.blueGrey))),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
             child: const Text('ඔව්, මකන්න', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -245,7 +252,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirm) {
       try {
         await FirebaseFirestore.instance.collection('MonthlyRates').doc(docId).delete();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ගාස්තු සාර්ථකව මකා දමන ලදි!')));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ගාස්තු සාර්ථකව මකා දමන ලදි!')));
+          // Page eka auto adjust wenna
+          setState(() { _currentRatesPage = 0; });
+        }
       } catch (e) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('දෝෂයක්: $e')));
       }
@@ -266,317 +277,481 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
+  // ---------------------------------------------------------
+  // UI Helper
+  // ---------------------------------------------------------
+  InputDecoration _buildInputDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(fontSize: 13, color: Colors.blueGrey),
+      prefixIcon: Icon(icon, size: 20, color: Colors.blueGrey),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: primaryAppColor, width: 1.5)),
+    );
+  }
+
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Colors.grey.shade200),
+      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
+    );
+  }
+
+  // ---------------------------------------------------------
+  // UI BUILD 
+  // ---------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0, bottom: 100.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-
-            if (kIsWeb) ...[
-              Card(
-                color: Colors.blue.shade50,
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.blue.shade200)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Database Backup (දත්ත සංරක්ෂණය)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-                      const SizedBox(height: 8),
-                      const Text('ඔබගේ සියලුම දත්ත (.json) ගොනුවක් ලෙස ඔබගේ උපාංගයට සෘජුවම Download කරගන්න.', style: TextStyle(fontSize: 13, color: Colors.black87)),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: ElevatedButton.icon(
-                          onPressed: _isLoadingBackup ? null : _exportDatabaseBackupWeb,
-                          icon: _isLoadingBackup 
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                              : const Icon(Icons.cloud_download),
-                          label: Text(_isLoadingBackup ? 'Backup සැකසෙමින් පවතී...' : 'Backup එක Download කරන්න', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Divider(),
-              const SizedBox(height: 16),
+    return DefaultTabController(
+      length: 4, // Tabs 4k thiyenawa
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF4F6F8), 
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF1F2937),
+          elevation: 0,
+          title: const Text('සැකසුම් (Settings)', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
+          bottom: TabBar(
+            isScrollable: true, // Mobile ekata scroll karanna damma
+            tabAlignment: TabAlignment.start, // Left align wenna
+            labelPadding: const EdgeInsets.symmetric(horizontal: 20),
+            labelColor: primaryAppColor,
+            unselectedLabelColor: Colors.blueGrey.shade400,
+            indicatorColor: primaryAppColor,
+            indicatorWeight: 4,
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            tabs: const [
+              Tab(text: 'අමතර භාණ්ඩ'),
+              Tab(text: 'මාසික ගාස්තු'),
+              Tab(text: 'ගාස්තු ලැයිස්තුව'),
+              Tab(text: 'ආරක්ෂිත/දත්ත'),
             ],
-
-            const Text('පරිපාලක මුරපදය වෙනස් කිරීම', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.redAccent)),
-            const SizedBox(height: 12),
-            Form(
-              key: _passwordFormKey,
-              child: Card(
-                elevation: 3,
-                color: Colors.red.withOpacity(0.03),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.red.withOpacity(0.1))),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      TextFormField(
-                        controller: _currentPasswordController,
-                        obscureText: _obscureCurrent,
-                        decoration: InputDecoration(
-                          labelText: 'වත්මන් මුරපදය', 
-                          border: const OutlineInputBorder(), 
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(icon: Icon(_obscureCurrent ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _obscureCurrent = !_obscureCurrent))
-                        ),
-                        validator: (val) => val!.isEmpty ? 'වත්මන් මුරපදය ඇතුළත් කරන්න' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _newPasswordController,
-                        obscureText: _obscureNew,
-                        decoration: InputDecoration(
-                            labelText: 'අලුත් මුරපදය',
-                            border: const OutlineInputBorder(),
-                            prefixIcon: const Icon(Icons.lock_reset),
-                            suffixIcon: IconButton(icon: Icon(_obscureNew ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _obscureNew = !_obscureNew))
-                        ),
-                        validator: (val) {
-                          if (val!.isEmpty) return 'අලුත් මුරපදයක් ඇතුළත් කරන්න';
-                          if (val.length < 3) return 'අවම වශයෙන් අකුරු/ඉලක්කම් 3ක් ඕනෑ';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _confirmPasswordController,
-                        obscureText: _obscureNew, 
-                        decoration: const InputDecoration(labelText: 'අලුත් මුරපදය තහවුරු කරන්න', border: OutlineInputBorder(), prefixIcon: Icon(Icons.check_circle_outline)),
-                        validator: (val) {
-                          if (val!.isEmpty) return 'මුරපදය තහවුරු කරන්න';
-                          if (val != _newPasswordController.text) return 'මුරපද එකිනෙකට නොගැලපේ';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: ElevatedButton(
-                          onPressed: _isLoadingPassword ? null : _changePassword,
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                          child: _isLoadingPassword 
-                              ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                              : const Text('මුරපදය යාවත්කාලීන කරන්න', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Divider(),
-            const SizedBox(height: 16),
-            
-            const Text('අමතර භාණ්ඩ මිල ගණන් (ස්ථිර)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Form(
-              key: _globalFormKey,
-              child: Card(
-                elevation: 3,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _fert1PriceController,
-                              decoration: const InputDecoration(labelText: 'පොහොර 1 (Rs)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.eco, size: 20)),
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              validator: (val) => val!.isEmpty ? 'මිල දෙන්න' : null,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _fert2PriceController,
-                              decoration: const InputDecoration(labelText: 'පොහොර 2 (Rs)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.eco, size: 20)),
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              validator: (val) => val!.isEmpty ? 'මිල දෙන්න' : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _teaPkt1PriceController,
-                              decoration: const InputDecoration(labelText: 'තේ පැකට් 1 (Rs)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.local_cafe, size: 20)),
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              validator: (val) => val!.isEmpty ? 'මිල දෙන්න' : null,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _teaPkt2PriceController,
-                              decoration: const InputDecoration(labelText: 'තේ පැකට් 2 (Rs)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.local_cafe, size: 20)),
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              validator: (val) => val!.isEmpty ? 'මිල දෙන්න' : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: ElevatedButton(
-                          onPressed: _isLoadingGlobal ? null : _saveGlobalPrices,
-                          style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).primaryColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                          child: _isLoadingGlobal 
-                              ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                              : const Text('මිල ගණන් යාවත්කාලීන කරන්න', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-            const Divider(),
-            const SizedBox(height: 16),
-
-            const Text('මාසික ගාස්තු සැකසුම්', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Form(
-              key: _monthlyFormKey,
-              child: Card(
-                elevation: 3,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: _selectedYear,
-                              decoration: const InputDecoration(labelText: 'වර්ෂය', border: OutlineInputBorder()),
-                              items: _years.map((y) => DropdownMenuItem(value: y, child: Text(y))).toList(),
-                              onChanged: (val) => setState(() => _selectedYear = val!),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: _selectedMonth,
-                              decoration: const InputDecoration(labelText: 'මාසය', border: OutlineInputBorder()),
-                              items: _months.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
-                              onChanged: (val) => setState(() => _selectedMonth = val!),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _teaRateController,
-                              decoration: const InputDecoration(labelText: 'තේ දළු මිල', border: OutlineInputBorder(), prefixText: 'Rs. '),
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              validator: (val) => val!.isEmpty ? 'මිල ඇතුළත් කරන්න' : null,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _transportRateController,
-                              decoration: const InputDecoration(labelText: 'ප්‍රවාහන ගාස්තුව', border: OutlineInputBorder(), prefixText: 'Rs. '),
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              validator: (val) => val!.isEmpty ? 'ගාස්තුව ඇතුළත් කරන්න' : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: ElevatedButton(
-                          onPressed: _isLoadingMonthly ? null : _saveMonthlyRates,
-                          style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).primaryColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                          child: _isLoadingMonthly 
-                              ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                              : const Text('මාසික ගාස්තු සුරකින්න', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-            
-            const Text('සුරැකි මාසික ගාස්තු ලැයිස්තුව', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('MonthlyRates').orderBy('sortValue', descending: true).snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('දැනට කිසිදු ගාස්තුවක් ඇතුළත් කර නොමැත.'));
-
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12.0),
-                    boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 4))],
-                  ),
-                  clipBehavior: Clip.antiAlias, 
-                  child: Table(
-                    columnWidths: const { 0: FlexColumnWidth(2.2), 1: FlexColumnWidth(1.5), 2: FlexColumnWidth(1.5), 3: FlexColumnWidth(1.0) },
-                    defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                    border: TableBorder(horizontalInside: BorderSide(color: Colors.grey.shade200, width: 1)),
-                    children: [
-                      TableRow(
-                        decoration: BoxDecoration(color: Theme.of(context).primaryColor.withOpacity(0.1)),
-                        children: [
-                          _buildTableHeader('මාසය'), _buildTableHeader('තේ දළු\n(Rs)'), _buildTableHeader('ප්‍රවාහනය\n(Rs)'), _buildTableHeader(''),
-                        ],
-                      ),
-                      ...snapshot.data!.docs.map((doc) {
-                        return TableRow(
-                          children: [
-                            _buildTableCell('${doc['year']}\n${doc['month']}', isBold: true),
-                            _buildTableCell(doc['teaRate'].toStringAsFixed(2)),
-                            _buildTableCell(doc['transportRate'].toStringAsFixed(2)),
-                            IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => _deleteRate(doc.id)),
-                          ],
-                        );
-                      }).toList(),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ],
+          ),
+        ),
+        body: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: TabBarView(
+            children: [
+              _buildGlobalPricesTab(), // Tab 1
+              _buildMonthlyRatesTab(), // Tab 2
+              _buildSavedRatesTab(),   // Tab 3 (Pagination added)
+              _buildSecurityTab(),     // Tab 4
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildTableHeader(String text) => Padding(padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0), child: Text(text, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor, fontSize: 13)));
-  Widget _buildTableCell(String text, {bool isBold = false}) => Padding(padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0), child: Text(text, textAlign: TextAlign.center, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.normal, fontSize: 13)));
+  // --- Tab 1: අමතර භාණ්ඩ මිල ගණන් ---
+  Widget _buildGlobalPricesTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('අමතර භාණ්ඩ මිල ගණන් (ස්ථිර)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1F2937))),
+          const SizedBox(height: 8),
+          const Text('මෙම මිල ගණන් මින් ඉදිරියට නිකුත් කරන සියලුම පොහොර සහ තේ පැකට් සඳහා අදාළ වේ.', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: _cardDecoration(),
+            child: Form(
+              key: _globalFormKey,
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _fert1PriceController,
+                          decoration: _buildInputDecoration('පොහොර 1 (Rs)', Icons.eco_rounded),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: (val) => val!.isEmpty ? 'මිල දෙන්න' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _fert2PriceController,
+                          decoration: _buildInputDecoration('පොහොර 2 (Rs)', Icons.eco_rounded),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: (val) => val!.isEmpty ? 'මිල දෙන්න' : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _teaPkt1PriceController,
+                          decoration: _buildInputDecoration('තේ පැකට් 1 (Rs)', Icons.local_cafe_rounded),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: (val) => val!.isEmpty ? 'මිල දෙන්න' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _teaPkt2PriceController,
+                          decoration: _buildInputDecoration('තේ පැකට් 2 (Rs)', Icons.local_cafe_rounded),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: (val) => val!.isEmpty ? 'මිල දෙන්න' : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: _isLoadingGlobal ? null : _saveGlobalPrices,
+                      style: ElevatedButton.styleFrom(backgroundColor: primaryAppColor, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      child: _isLoadingGlobal 
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('මිල ගණන් යාවත්කාලීන කරන්න', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Tab 2: මාසික ගාස්තු සැකසුම් ---
+  Widget _buildMonthlyRatesTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('මාසික ගාස්තු සැකසුම්', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1F2937))),
+          const SizedBox(height: 8),
+          const Text('එක් එක් මාසය සඳහා ගෙවන දළු මිල සහ ප්‍රවාහන ගාස්තු මෙතැනින් ඇතුළත් කරන්න.', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: _cardDecoration(),
+            child: Form(
+              key: _monthlyFormKey,
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedYear,
+                          decoration: _buildInputDecoration('වර්ෂය', Icons.calendar_month_rounded),
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.blueGrey),
+                          items: _years.map((y) => DropdownMenuItem(value: y, child: Text(y))).toList(),
+                          onChanged: (val) => setState(() => _selectedYear = val!),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedMonth,
+                          decoration: _buildInputDecoration('මාසය', Icons.date_range_rounded),
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.blueGrey),
+                          items: _months.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+                          onChanged: (val) => setState(() => _selectedMonth = val!),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _teaRateController,
+                          decoration: _buildInputDecoration('තේ දළු මිල (Rs)', Icons.monetization_on_outlined),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: (val) => val!.isEmpty ? 'මිල ඇතුළත් කරන්න' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _transportRateController,
+                          decoration: _buildInputDecoration('ප්‍රවාහනය (Rs)', Icons.local_shipping_outlined),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: (val) => val!.isEmpty ? 'ගාස්තුව ඇතුළත් කරන්න' : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: _isLoadingMonthly ? null : _saveMonthlyRates,
+                      style: ElevatedButton.styleFrom(backgroundColor: primaryAppColor, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      child: _isLoadingMonthly 
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('මාසික ගාස්තු සුරකින්න', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Tab 3: සුරැකි මාසික ගාස්තු ලැයිස්තුව (With Pagination) ---
+  Widget _buildSavedRatesTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('සුරැකි මාසික ගාස්තු ලැයිස්තුව', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1F2937))),
+          const SizedBox(height: 8),
+          const Text('දැනට පද්ධතියේ සුරකී ඇති සියලුම මාසික ගාස්තු. (පිටුවකට 5 බැගින්)', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
+          const SizedBox(height: 16),
+          
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('MonthlyRates').orderBy('sortValue', descending: true).snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: _cardDecoration(),
+                  child: const Center(child: Text('දැනට කිසිදු ගාස්තුවක් ඇතුළත් කර නොමැත.', style: TextStyle(color: Colors.blueGrey))),
+                );
+              }
+
+              // Pagination calculation
+              List<QueryDocumentSnapshot> allDocs = snapshot.data!.docs;
+              int totalPages = (allDocs.length / _ratesPerPage).ceil();
+              
+              if (_currentRatesPage >= totalPages && totalPages > 0) {
+                _currentRatesPage = totalPages - 1; // Safely adjust if a record is deleted
+              }
+              
+              List<QueryDocumentSnapshot> pageDocs = allDocs.skip(_currentRatesPage * _ratesPerPage).take(_ratesPerPage).toList();
+
+              return Column(
+                children: [
+                  Container(
+                    decoration: _cardDecoration(),
+                    clipBehavior: Clip.antiAlias, 
+                    child: Table(
+                      columnWidths: const { 0: FlexColumnWidth(2.2), 1: FlexColumnWidth(1.5), 2: FlexColumnWidth(1.5), 3: FlexColumnWidth(1.0) },
+                      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                      border: TableBorder(horizontalInside: BorderSide(color: Colors.grey.shade200, width: 1)),
+                      children: [
+                        TableRow(
+                          decoration: const BoxDecoration(color: Color(0xFFF9FAFB)),
+                          children: [
+                            _buildTableHeader('මාසය'), _buildTableHeader('තේ දළු\n(Rs)'), _buildTableHeader('ප්‍රවාහනය\n(Rs)'), _buildTableHeader(''),
+                          ],
+                        ),
+                        ...pageDocs.map((doc) {
+                          return TableRow(
+                            children: [
+                              _buildTableCell('${doc['year']}\n${doc['month']}', isBold: true),
+                              _buildTableCell(doc['teaRate'].toStringAsFixed(2)),
+                              _buildTableCell(doc['transportRate'].toStringAsFixed(2)),
+                              IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20), onPressed: () => _deleteRate(doc.id)),
+                            ],
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Pagination Controls
+                  if (totalPages > 1) 
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _currentRatesPage > 0 ? () => setState(() => _currentRatesPage--) : null,
+                          icon: const Icon(Icons.chevron_left, size: 18),
+                          label: const Text("පෙර"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: primaryAppColor,
+                            elevation: 0,
+                            side: BorderSide(color: Colors.grey.shade300),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                          ),
+                        ),
+                        Text('පිටුව ${_currentRatesPage + 1} / $totalPages', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 13)),
+                        ElevatedButton.icon(
+                          onPressed: _currentRatesPage < totalPages - 1 ? () => setState(() => _currentRatesPage++) : null,
+                          icon: const Icon(Icons.chevron_right, size: 18),
+                          label: const Text("ඊළඟ"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: primaryAppColor,
+                            elevation: 0,
+                            side: BorderSide(color: Colors.grey.shade300),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                          ),
+                        ),
+                      ],
+                    )
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Tab 4: ආරක්ෂිත සහ දත්ත ---
+  Widget _buildSecurityTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+
+          if (kIsWeb) ...[
+            const Text('Database Backup (දත්ත සංරක්ෂණය)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1F2937))),
+            const SizedBox(height: 8),
+            const Text('ඔබගේ සියලුම දත්ත (.json) ගොනුවක් ලෙස ඔබගේ උපාංගයට සෘජුවම Download කරගන්න.', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F9FF), // Light Blue tint
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFBAE6FD)),
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: _isLoadingBackup ? null : _exportDatabaseBackupWeb,
+                  icon: _isLoadingBackup 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.cloud_download_rounded, size: 22),
+                  label: Text(_isLoadingBackup ? 'Backup සැකසෙමින් පවතී...' : 'Backup එක Download කරන්න', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0284C7), foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                ),
+              ),
+            ),
+            const SizedBox(height: 40),
+          ],
+
+          const Text('පරිපාලක මුරපදය වෙනස් කිරීම', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1F2937))),
+          const SizedBox(height: 8),
+          const Text('පද්ධතියට ඇතුල්වීමේදී භාවිතා කරන මුරපදය (Password) මෙතැනින් වෙනස් කළ හැක.', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
+          const SizedBox(height: 16),
+          
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF2F2), // Light Red tint
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFECACA)),
+            ),
+            child: Form(
+              key: _passwordFormKey,
+              child: Column(
+                children: [
+                  TextFormField(
+                    controller: _currentPasswordController,
+                    obscureText: _obscureCurrent,
+                    decoration: InputDecoration(
+                      labelText: 'වත්මන් මුරපදය', 
+                      labelStyle: const TextStyle(fontSize: 13, color: Colors.blueGrey),
+                      filled: true, fillColor: Colors.white,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.red.shade200)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.red.shade200)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
+                      prefixIcon: const Icon(Icons.lock_outline, size: 20, color: Colors.blueGrey),
+                      suffixIcon: IconButton(icon: Icon(_obscureCurrent ? Icons.visibility_off : Icons.visibility, color: Colors.blueGrey, size: 20), onPressed: () => setState(() => _obscureCurrent = !_obscureCurrent))
+                    ),
+                    validator: (val) => val!.isEmpty ? 'වත්මන් මුරපදය ඇතුළත් කරන්න' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _newPasswordController,
+                    obscureText: _obscureNew,
+                    decoration: InputDecoration(
+                      labelText: 'අලුත් මුරපදය',
+                      labelStyle: const TextStyle(fontSize: 13, color: Colors.blueGrey),
+                      filled: true, fillColor: Colors.white,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.red.shade200)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.red.shade200)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
+                      prefixIcon: const Icon(Icons.lock_reset, size: 20, color: Colors.blueGrey),
+                      suffixIcon: IconButton(icon: Icon(_obscureNew ? Icons.visibility_off : Icons.visibility, color: Colors.blueGrey, size: 20), onPressed: () => setState(() => _obscureNew = !_obscureNew))
+                    ),
+                    validator: (val) {
+                      if (val!.isEmpty) return 'අලුත් මුරපදයක් ඇතුළත් කරන්න';
+                      if (val.length < 3) return 'අවම වශයෙන් අකුරු/ඉලක්කම් 3ක් ඕනෑ';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _confirmPasswordController,
+                    obscureText: _obscureNew, 
+                    decoration: InputDecoration(
+                      labelText: 'අලුත් මුරපදය තහවුරු කරන්න',
+                      labelStyle: const TextStyle(fontSize: 13, color: Colors.blueGrey),
+                      filled: true, fillColor: Colors.white,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.red.shade200)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.red.shade200)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
+                      prefixIcon: const Icon(Icons.check_circle_outline, size: 20, color: Colors.blueGrey),
+                    ),
+                    validator: (val) {
+                      if (val!.isEmpty) return 'මුරපදය තහවුරු කරන්න';
+                      if (val != _newPasswordController.text) return 'මුරපද එකිනෙකට නොගැලපේ';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: _isLoadingPassword ? null : _changePassword,
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      child: _isLoadingPassword 
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('මුරපදය යාවත්කාලීන කරන්න', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableHeader(String text) => Padding(padding: const EdgeInsets.symmetric(vertical: 14.0, horizontal: 4.0), child: Text(text, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF4B5563), fontSize: 12)));
+  Widget _buildTableCell(String text, {bool isBold = false}) => Padding(padding: const EdgeInsets.symmetric(vertical: 14.0, horizontal: 4.0), child: Text(text, textAlign: TextAlign.center, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.w600, color: const Color(0xFF1F2937), fontSize: 13)));
 }
