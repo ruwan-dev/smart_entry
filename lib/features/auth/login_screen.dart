@@ -23,7 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     String inputPassword = _passwordController.text.trim();
 
-    if (inputPassword.isEmpty) {S
+    if (inputPassword.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('කරුණාකර මුරපදය ඇතුළත් කරන්න.')),
       );
