@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
 // ගොනු තුනම එකම Folder එකේ තියෙන නිසා මෙහෙම Import කරන්න
@@ -43,27 +43,36 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
     setState(() => _isLoading = true);
     try {
       // 1. Monthly Rates (Tea Rate & Transport Rate) ලබා ගැනීම
-      var ratesSnap = await FirebaseFirestore.instance.collection('MonthlyRates').get();
+      var ratesSnap = await Supabase.instance.client.from('monthly_rates').select();
       Map<String, Map<String, double>> monthlyRatesMap = {};
-      for (var doc in ratesSnap.docs) {
-        var data = doc.data();
-        monthlyRatesMap[doc.id] = {
-          'teaRate': _parseDouble(data['teaRate']),
-          'transportRate': _parseDouble(data['transportRate']),
+      for (var doc in ratesSnap) {
+        monthlyRatesMap[doc['id']] = {
+          'teaRate': _parseDouble(doc['teaRate']),
+          'transportRate': _parseDouble(doc['transportRate']),
         };
       }
 
-      // 2. Daily Entries ලබා ගැනීම
-      var entriesSnap = await FirebaseFirestore.instance
-          .collection('DailyEntries')
-          .where('customerId', isEqualTo: widget.customerId)
-          .orderBy('date', descending: false) 
-          .get();
+      // 2. Global Settings (item unit prices) ලබා ගැනීම
+      var priceDoc = await Supabase.instance.client
+          .from('global_settings')
+          .select()
+          .eq('id', 'prices')
+          .maybeSingle();
+      double f1Price = _parseDouble(priceDoc?['fertilizer1Price']);
+      double f2Price = _parseDouble(priceDoc?['fertilizer2Price']);
+      double tp1Price = _parseDouble(priceDoc?['teaPacket1Price']);
+      double tp2Price = _parseDouble(priceDoc?['teaPacket2Price']);
 
-      Map<String, List<QueryDocumentSnapshot>> entriesByMonth = {};
-      for (var doc in entriesSnap.docs) {
-        var data = doc.data() as Map<String, dynamic>;
-        String dateStr = data['date'] ?? ''; 
+      // 3. Daily Entries ලබා ගැනීම
+      var entriesSnap = await Supabase.instance.client
+          .from('daily_entries')
+          .select()
+          .eq('customerId', widget.customerId)
+          .order('date', ascending: true);
+
+      Map<String, List<Map<String, dynamic>>> entriesByMonth = {};
+      for (var doc in entriesSnap) {
+        String dateStr = doc['date'] ?? ''; 
         if (dateStr.length >= 7) {
           String monthKey = dateStr.substring(0, 7); 
           if (!entriesByMonth.containsKey(monthKey)) entriesByMonth[monthKey] = [];
@@ -77,7 +86,7 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
       List<String> sortedMonthKeys = entriesByMonth.keys.toList()..sort();
 
       for (String monthKey in sortedMonthKeys) {
-        List<QueryDocumentSnapshot> docs = entriesByMonth[monthKey]!;
+        List<Map<String, dynamic>> docs = entriesByMonth[monthKey]!;
         DateTime parsedDate = DateTime.parse('$monthKey-01');
         String monthName = DateFormat('MMMM').format(parsedDate); 
         String yearStr = parsedDate.year.toString();
@@ -92,24 +101,20 @@ class _MonthlyBillScreenState extends State<MonthlyBillScreen> {
         
         Map<String, Map<String, dynamic>> dailyData = {};
 
-        for (var doc in docs) {
-          var data = doc.data() as Map<String, dynamic>;
+        for (var data in docs) {
           String date = data['date'].toString();
           double netW = _parseDouble(data['netWeight']);
           
           double f1Qty = _parseDouble(data['fertilizer1Qty']);
-          double f1Price = _parseDouble(data['fertilizer1UnitPrice']);
           double f2Qty = _parseDouble(data['fertilizer2Qty']);
-          double f2Price = _parseDouble(data['fertilizer2UnitPrice']);
           double tp1Qty = _parseDouble(data['teaPacket1Qty']);
-          double tp1Price = _parseDouble(data['teaPacket1UnitPrice']);
           double tp2Qty = _parseDouble(data['teaPacket2Qty']);
-          double tp2Price = _parseDouble(data['teaPacket2UnitPrice']);
           double adv = _parseDouble(data['advanceAmount']);
 
           sumNetWeight += netW;
           sumAdvance += adv;
           
+          // Use prices from global_settings (not from daily_entries — they don't have unit prices)
           double dayItemsTotal = (f1Qty * f1Price) + (f2Qty * f2Price) + (tp1Qty * tp1Price) + (tp2Qty * tp2Price);
           sumItemsTotal += dayItemsTotal;
 

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Firestore import කරන්න
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:smart_entry/features/dashboard/dashboard_screen.dart';
 // (හෝ DashboardScreen එක තියෙන නිවැරදි path එක)
 
@@ -19,7 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isPasswordVisible = false;
   bool _isLoading = false; // Loading තත්ත්වය පරීක්ෂා කිරීමට
 
-  // Firestore වෙතින් මුරපදය පරීක්ෂා කරන අලුත් login function එක
+  // Supabase වෙතින් මුරපදය පරීක්ෂා කරන අලුත් login function එක
   Future<void> _login() async {
     String inputPassword = _passwordController.text.trim();
 
@@ -33,25 +33,26 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() { _isLoading = true; }); // Loading ආරම්භය
 
     try {
-      // Firestore වෙතින් මුරපදය ලබා ගැනීම
-      DocumentSnapshot adminDoc = await FirebaseFirestore.instance
-          .collection('GlobalSettings')
-          .doc('auth')
-          .get();
+      // Supabase වෙතින් මුරපදය ලබා ගැනීම
+      var adminDoc = await Supabase.instance.client
+          .from('global_settings')
+          .select('password')
+          .eq('id', 'auth')
+          .maybeSingle();
 
-      if (!adminDoc.exists) {
+      if (adminDoc == null) {
         // ජාල දෝෂයක් හෝ document එක නැතිනම්
         throw Exception("මුරපද දත්ත සොයාගත නොහැකි විය. (Database error)");
       }
 
-      String dbPassword = adminDoc.get('password').toString();
+      String dbPassword = adminDoc['password'].toString();
 
       if (inputPassword == dbPassword) {
         // Navigate to Dashboard and remove Login Screen from backstack
         if (mounted) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => DashboardScreen()),
+            MaterialPageRoute(builder: (context) => const DashboardScreen()),
           );
         }
       } else {

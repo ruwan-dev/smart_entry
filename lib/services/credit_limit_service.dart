@@ -1,7 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CreditLimitService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   // පසුගිය මාස 3ක සාමාන්‍ය Net Weight දළු ප්‍රමාණය ලබා ගැනීම
   Future<double> getAverageTeaLeaves(String customerId) async {
@@ -9,24 +9,19 @@ class CreditLimitService {
       // අද සිට දින 90 කට පෙර දිනය
       DateTime threeMonthsAgo = DateTime.now().subtract(const Duration(days: 90));
 
-      // 'tea_entries' collection එකෙන් අදාළ පාරිභෝගිකයාගේ පසුගිය මාස 3ක දත්ත ලබා ගැනීම
-      QuerySnapshot snapshot = await _firestore
-          .collection('tea_entries') 
-          .where('customerId', isEqualTo: customerId)
-          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(threeMonthsAgo))
-          .get();
+      var snapshot = await _supabase
+          .from('daily_entries') 
+          .select('netWeight')
+          .eq('customerId', customerId)
+          .gte('timestamp', threeMonthsAgo.toIso8601String());
 
-      if (snapshot.docs.isEmpty) {
+      if (snapshot.isEmpty) {
         return 0.0; // දත්ත නොමැති නම් 0 ක් return කරයි
       }
 
       double totalNetWeight = 0.0;
 
-      for (var doc in snapshot.docs) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        
-        // 'netWeight' යනු දළු කිලෝ ගණන save වන field එකයි
-        // int හෝ double ලෙස දත්ත පැමිණිය හැකි බැවින් ආරක්ෂිතව .toDouble() භාවිතා කිරීම
+      for (var data in snapshot) {
         totalNetWeight += (data['netWeight'] ?? 0).toDouble(); 
       }
 

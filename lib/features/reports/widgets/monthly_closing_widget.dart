@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -56,53 +56,53 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
       String prevMonthName = DateFormat('MMMM').format(DateTime(prevYear, prevMonth));
       String prevMonthKey = "$prevYear-$prevMonthName"; 
 
-      var ratesDoc = await FirebaseFirestore.instance.collection('MonthlyRates').doc(ratesDocId).get();
-      if (!ratesDoc.exists) {
+      var ratesDoc = await Supabase.instance.client.from('monthly_rates').select().eq('id', ratesDocId).maybeSingle();
+      if (ratesDoc == null) {
         setState(() { _ratesMissing = true; _isCalculating = false; });
         return;
       }
 
-      var summaryDoc = await FirebaseFirestore.instance.collection('MonthlySummaries').doc(ratesDocId).get();
-      if (summaryDoc.exists) {
+      var summaryDoc = await Supabase.instance.client.from('monthly_summaries').select().eq('id', ratesDocId).maybeSingle();
+      if (summaryDoc != null) {
         _isAlreadyFinalized = true;
-        _monthlySummaryData = summaryDoc.data();
+        _monthlySummaryData = summaryDoc;
       }
 
-      var priceDoc = await FirebaseFirestore.instance.collection('GlobalSettings').doc('prices').get();
-      var pData = priceDoc.data() ?? {};
+      var priceDoc = await Supabase.instance.client.from('global_settings').select().eq('id', 'prices').maybeSingle();
+      var pData = priceDoc ?? {};
       
-      double teaRate = (ratesDoc.data()?['teaRate'] ?? 0).toDouble();
-      double transRate = (ratesDoc.data()?['transportRate'] ?? 0).toDouble();
+      double teaRate = (ratesDoc['teaRate'] ?? 0).toDouble();
+      double transRate = (ratesDoc['transportRate'] ?? 0).toDouble();
 
-      var customers = await FirebaseFirestore.instance.collection('Customers').get();
+      var customers = await Supabase.instance.client.from('customers').select();
       
       String searchKey = "$_currentYear-${_selectedMonth.toString().padLeft(2, '0')}";
-      var allEntriesSnapshot = await FirebaseFirestore.instance.collection('DailyEntries')
-          .where('date', isGreaterThanOrEqualTo: "$searchKey-01")
-          .where('date', isLessThanOrEqualTo: "$searchKey-31")
-          .get();
+      var allEntriesSnapshot = await Supabase.instance.client.from('daily_entries')
+          .select()
+          .gte('date', "$searchKey-01")
+          .lte('date', "$searchKey-31");
 
-      Map<String, List<QueryDocumentSnapshot>> groupedEntries = {};
-      for (var doc in allEntriesSnapshot.docs) {
+      Map<String, List<Map<String, dynamic>>> groupedEntries = {};
+      for (var doc in allEntriesSnapshot) {
         String cId = doc['customerId'];
         if (!groupedEntries.containsKey(cId)) groupedEntries[cId] = [];
         groupedEntries[cId]!.add(doc);
       }
 
-      var prevBillFutures = customers.docs.map((customer) => 
-        FirebaseFirestore.instance.collection('FinalizedBills').doc("${customer.id}_$prevMonthKey").get()
+      var prevBillFutures = customers.map((customer) => 
+        Supabase.instance.client.from('finalized_bills').select().eq('id', "${customer['id']}_$prevMonthKey").maybeSingle()
       ).toList();
       var prevBillDocs = await Future.wait(prevBillFutures);
       
-      Map<String, DocumentSnapshot> prevBillsMap = {};
-      for (int i = 0; i < customers.docs.length; i++) {
-        prevBillsMap[customers.docs[i].id] = prevBillDocs[i];
+      Map<String, Map<String, dynamic>?> prevBillsMap = {};
+      for (int i = 0; i < customers.length; i++) {
+        prevBillsMap[customers[i]['id']] = prevBillDocs[i];
       }
 
       List<Map<String, dynamic>> results = [];
 
-      for (var customer in customers.docs) {
-        var monthlyEntries = groupedEntries[customer.id] ?? [];
+      for (var customer in customers) {
+        var monthlyEntries = groupedEntries[customer['id']] ?? [];
         if (monthlyEntries.isEmpty) continue;
 
         monthlyEntries.sort((a, b) => a['date'].toString().compareTo(b['date'].toString()));
@@ -110,8 +110,7 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         double totalW = 0, totalAdv = 0, f1Q = 0, f2Q = 0, t1Q = 0, t2Q = 0;
         List<Map<String, dynamic>> rows = [];
         
-        for (var doc in monthlyEntries) {
-          var d = doc.data() as Map<String, dynamic>;
+        for (var d in monthlyEntries) {
           double w = (d['netWeight'] ?? 0).toDouble();
           double adv = (d['advanceAmount'] ?? 0).toDouble();
           double f1q = (d['fertilizer1Qty'] ?? 0).toDouble();
@@ -133,13 +132,17 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         }
 
         double lastMonthArrears = 0.0;
-        var prevBillDoc = prevBillsMap[customer.id];
-        if (prevBillDoc != null && prevBillDoc.exists) {
-          var prevBillData = prevBillDoc.data() as Map<String, dynamic>? ?? {};
-          var billData = prevBillData['billData'] ?? {};
-          double prevNetPayable = (billData['netPayable'] ?? 0.0).toDouble();
-          if (prevNetPayable < 0) {
-            lastMonthArrears = prevNetPayable.abs();
+        var prevBillDoc = prevBillsMap[customer['id']];
+        if (prevBillDoc != null) {
+          // Supabase returns JSONB as Map<String, dynamic> — cast safely
+          var billData = prevBillDoc['billData'];
+          if (billData is Map) {
+            double prevNetPayable = (billData['netPayable'] ?? 0.0) is num
+                ? (billData['netPayable'] ?? 0.0).toDouble()
+                : double.tryParse(billData['netPayable'].toString()) ?? 0.0;
+            if (prevNetPayable < 0) {
+              lastMonthArrears = prevNetPayable.abs();
+            }
           }
         }
 
@@ -148,7 +151,7 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         double other = totalAdv + (f1Q * (pData['fertilizer1Price'] ?? 0)) + (f2Q * (pData['fertilizer2Price'] ?? 0)) + (t1Q * (pData['teaPacket1Price'] ?? 0)) + (t2Q * (pData['teaPacket2Price'] ?? 0));
 
         results.add({
-          'customerId': customer.id, 'name': customer['name'], 'ref': customer['refNumber'],
+          'customerId': customer['id'], 'name': customer['name'], 'ref': customer['refNumber'],
           'bill': {
             'displayMonth': displayMonth, 'teaRate': teaRate, 'grossIncome': gross,
             'transportCost': trans, 'otherCosts': other, 
@@ -196,24 +199,27 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         
         if (item['isFinalized'] == false) {
           String monthKey = b['displayMonth'].toString().replaceAll(' ', '-');
-          await FirebaseFirestore.instance.collection('FinalizedBills').doc("${item['customerId']}_$monthKey").set({
+          await Supabase.instance.client.from('finalized_bills').upsert({
+            'id': "${item['customerId']}_$monthKey",
             'customerId': item['customerId'], 'customerName': item['name'], 'refNumber': item['ref'],
-            'billData': b, 'finalizedAt': FieldValue.serverTimestamp(),
+            'billData': b, 'finalizedAt': DateTime.now().toIso8601String(),
           });
         }
         
-        double tw = 0;
-        for (var r in b['tableRows']) tw += (r['weight'] ?? 0);
+        // Derive weight from grossIncome/teaRate (avoids re-summing tableRows, prevents type errors)
+        double bTeaRate = (b['teaRate'] ?? 0).toDouble();
+        double bGross = (b['grossIncome'] ?? 0).toDouble();
+        double tw = bTeaRate > 0 ? bGross / bTeaRate : 0;
         totalWeight += tw;
-        totalGross += (b['grossIncome'] ?? 0);
-        totalAdvance += (b['advTotal'] ?? 0);
-        totalF1Qty += (b['f1Qty'] ?? 0); totalF1Amt += (b['f1Total'] ?? 0);
-        totalF2Qty += (b['f2Qty'] ?? 0); totalF2Amt += (b['f2Total'] ?? 0);
-        totalT1Qty += (b['t1Qty'] ?? 0); totalT1Amt += (b['t1Total'] ?? 0);
-        totalT2Qty += (b['t2Qty'] ?? 0); totalT2Amt += (b['t2Total'] ?? 0);
-        totalTransport += (b['transportCost'] ?? 0);
+        totalGross += bGross;
+        totalAdvance += (b['advTotal'] ?? 0).toDouble();
+        totalF1Qty += (b['f1Qty'] ?? 0).toDouble(); totalF1Amt += (b['f1Total'] ?? 0).toDouble();
+        totalF2Qty += (b['f2Qty'] ?? 0).toDouble(); totalF2Amt += (b['f2Total'] ?? 0).toDouble();
+        totalT1Qty += (b['t1Qty'] ?? 0).toDouble(); totalT1Amt += (b['t1Total'] ?? 0).toDouble();
+        totalT2Qty += (b['t2Qty'] ?? 0).toDouble(); totalT2Amt += (b['t2Total'] ?? 0).toDouble();
+        totalTransport += (b['transportCost'] ?? 0).toDouble();
         
-        double net = (b['netPayable'] ?? 0);
+        double net = (b['netPayable'] ?? 0).toDouble();
         totalNet += net;
         if (net > 0) totalPositiveNet += net;
         else totalNegativeNet += net.abs();
@@ -228,8 +234,8 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
       }
 
       if (!_isAlreadyFinalized) {
-        await FirebaseFirestore.instance.collection('MonthlySummaries').doc(ratesDocId).set({
-          'month': ratesDocId,
+        await Supabase.instance.client.from('monthly_summaries').upsert({
+          'id': ratesDocId,
           'totalWeight': totalWeight,
           'totalGross': totalGross,
           'totalAdvance': totalAdvance,
@@ -241,7 +247,7 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
           'totalPositiveNet': totalPositiveNet,
           'totalNegativeNet': totalNegativeNet,
           'totalNet': totalNet,
-          'finalizedAt': FieldValue.serverTimestamp(),
+          'finalizedAt': DateTime.now().toIso8601String(),
         });
       }
 

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb; 
 import 'package:universal_html/html.dart' as html; 
@@ -66,20 +66,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadGlobalPrices();
   }
 
-  // ---------------------------------------------------------
-  // LOGICS ( කිසිදු වෙනසක් කර නොමැත )
-  // ---------------------------------------------------------
-
   Future<void> _loadGlobalPrices() async {
     try {
-      DocumentSnapshot doc = await FirebaseFirestore.instance.collection('GlobalSettings').doc('prices').get();
-      if (doc.exists) {
-        var data = doc.data() as Map<String, dynamic>;
+      var doc = await Supabase.instance.client.from('global_settings').select().eq('id', 'prices').maybeSingle();
+      if (doc != null) {
         setState(() {
-          _fert1PriceController.text = (data['fertilizer1Price'] ?? '').toString();
-          _fert2PriceController.text = (data['fertilizer2Price'] ?? '').toString();
-          _teaPkt1PriceController.text = (data['teaPacket1Price'] ?? '').toString();
-          _teaPkt2PriceController.text = (data['teaPacket2Price'] ?? '').toString();
+          _fert1PriceController.text = (doc['fertilizer1Price'] ?? '').toString();
+          _fert2PriceController.text = (doc['fertilizer2Price'] ?? '').toString();
+          _teaPkt1PriceController.text = (doc['teaPacket1Price'] ?? '').toString();
+          _teaPkt2PriceController.text = (doc['teaPacket2Price'] ?? '').toString();
         });
       }
     } catch (e) {
@@ -87,36 +82,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
   
-  dynamic _sanitizeDataForJson(dynamic data) {
-    if (data is Timestamp) {
-      return data.toDate().toIso8601String();
-    } else if (data is Map) {
-      Map<String, dynamic> newMap = {};
-      data.forEach((key, value) {
-        newMap[key.toString()] = _sanitizeDataForJson(value);
-      });
-      return newMap;
-    } else if (data is List) {
-      return data.map((item) => _sanitizeDataForJson(item)).toList();
-    }
-    return data;
-  }
-
   Future<void> _exportDatabaseBackupWeb() async {
     setState(() { _isLoadingBackup = true; });
     try {
       Map<String, dynamic> fullBackupData = {};
       
-      List<String> collections = ['Customers', 'DailyEntries', 'MonthlyRates', 'GlobalSettings'];
+      List<String> collections = ['customers', 'daily_entries', 'monthly_rates', 'global_settings', 'monthly_summaries'];
 
       for (String col in collections) {
-        var snapshot = await FirebaseFirestore.instance.collection(col).get();
-        fullBackupData[col] = snapshot.docs.map((doc) {
-          return {
-            'documentId': doc.id,
-            ..._sanitizeDataForJson(doc.data()) as Map<String, dynamic>
-          };
-        }).toList();
+        var snapshot = await Supabase.instance.client.from(col).select();
+        fullBackupData[col] = snapshot;
       }
 
       String jsonString = const JsonEncoder.withIndent('  ').convert(fullBackupData);
@@ -154,9 +129,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       String newInput = _newPasswordController.text.trim();
 
       try {
-        DocumentSnapshot authDoc = await FirebaseFirestore.instance.collection('GlobalSettings').doc('auth').get();
-        if (!authDoc.exists) throw Exception("මුරපද දත්ත සොයාගත නොහැක.");
-        String dbPassword = authDoc.get('password').toString();
+        var authDoc = await Supabase.instance.client.from('global_settings').select().eq('id', 'auth').maybeSingle();
+        if (authDoc == null) throw Exception("මුරපද දත්ත සොයාගත නොහැක.");
+        String dbPassword = authDoc['password'].toString();
 
         if (currentInput != dbPassword) {
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('වත්මන් මුරපදය වැරදියි!'), backgroundColor: Colors.red));
@@ -164,9 +139,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return; 
         }
 
-        await FirebaseFirestore.instance.collection('GlobalSettings').doc('auth').set({
+        await Supabase.instance.client.from('global_settings').upsert({
+          'id': 'auth',
           'password': newInput,
-          'updatedAt': FieldValue.serverTimestamp(),
         });
 
         _currentPasswordController.clear();
@@ -189,12 +164,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         String docId = '$_selectedYear-$_selectedMonth';
         String sortValue = '$_selectedYear-${(_months.indexOf(_selectedMonth) + 1).toString().padLeft(2, '0')}';
 
-        await FirebaseFirestore.instance.collection('MonthlyRates').doc(docId).set({
+        await Supabase.instance.client.from('monthly_rates').upsert({
+          'id': docId,
           'year': _selectedYear,
           'month': _selectedMonth,
           'teaRate': double.parse(_teaRateController.text.trim()),
           'transportRate': double.parse(_transportRateController.text.trim()),
-          'updatedAt': FieldValue.serverTimestamp(),
+          'updatedAt': DateTime.now().toIso8601String(),
           'sortValue': sortValue,
         });
 
@@ -214,12 +190,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_globalFormKey.currentState!.validate()) {
       setState(() { _isLoadingGlobal = true; });
       try {
-        await FirebaseFirestore.instance.collection('GlobalSettings').doc('prices').set({
+        await Supabase.instance.client.from('global_settings').upsert({
+          'id': 'prices',
           'fertilizer1Price': double.parse(_fert1PriceController.text.trim()),
           'fertilizer2Price': double.parse(_fert2PriceController.text.trim()),
           'teaPacket1Price': double.parse(_teaPkt1PriceController.text.trim()),
           'teaPacket2Price': double.parse(_teaPkt2PriceController.text.trim()),
-          'updatedAt': FieldValue.serverTimestamp(),
         });
 
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('අමතර භාණ්ඩ මිල ගණන් සාර්ථකව යාවත්කාලීන විය!')));
@@ -251,10 +227,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (confirm) {
       try {
-        await FirebaseFirestore.instance.collection('MonthlyRates').doc(docId).delete();
+        await Supabase.instance.client.from('monthly_rates').delete().eq('id', docId);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ගාස්තු සාර්ථකව මකා දමන ලදි!')));
-          // Page eka auto adjust wenna
           setState(() { _currentRatesPage = 0; });
         }
       } catch (e) {
@@ -528,11 +503,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Text('දැනට පද්ධතියේ සුරකී ඇති සියලුම මාසික ගාස්තු. (පිටුවකට 5 බැගින්)', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
           const SizedBox(height: 16),
           
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('MonthlyRates').orderBy('sortValue', descending: true).snapshots(),
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: Supabase.instance.client.from('monthly_rates').stream(primaryKey: ['id']).order('sortValue', ascending: false),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
                 return Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
@@ -542,14 +517,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }
 
               // Pagination calculation
-              List<QueryDocumentSnapshot> allDocs = snapshot.data!.docs;
+              List<Map<String, dynamic>> allDocs = snapshot.data!;
               int totalPages = (allDocs.length / _ratesPerPage).ceil();
               
               if (_currentRatesPage >= totalPages && totalPages > 0) {
                 _currentRatesPage = totalPages - 1; // Safely adjust if a record is deleted
               }
               
-              List<QueryDocumentSnapshot> pageDocs = allDocs.skip(_currentRatesPage * _ratesPerPage).take(_ratesPerPage).toList();
+              List<Map<String, dynamic>> pageDocs = allDocs.skip(_currentRatesPage * _ratesPerPage).take(_ratesPerPage).toList();
 
               return Column(
                 children: [
@@ -570,10 +545,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ...pageDocs.map((doc) {
                           return TableRow(
                             children: [
-                              _buildTableCell('${doc['year']}\n${doc['month']}', isBold: true),
-                              _buildTableCell(doc['teaRate'].toStringAsFixed(2)),
-                              _buildTableCell(doc['transportRate'].toStringAsFixed(2)),
-                              IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20), onPressed: () => _deleteRate(doc.id)),
+                              _buildTableCell('${doc['year'] ?? ''}\n${doc['month'] ?? ''}', isBold: true),
+                              _buildTableCell((doc['teaRate'] as num? ?? 0).toDouble().toStringAsFixed(2)),
+                              _buildTableCell((doc['transportRate'] as num? ?? 0).toDouble().toStringAsFixed(2)),
+                              IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20), onPressed: () => _deleteRate(doc['id'])),
                             ],
                           );
                         }),

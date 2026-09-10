@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:smart_entry/core/entries/daily_entry_form_screen.dart'; 
 
 class DailyEntriesScreen extends StatefulWidget {
@@ -17,7 +17,7 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
   DateTime _selectedMonth = DateTime.now();
   String? _selectedCustomerId;
   final TextEditingController _refController = TextEditingController();
-  List<DocumentSnapshot> _allCustomers = []; 
+  List<Map<String, dynamic>> _allCustomers = []; 
 
   @override
   void initState() {
@@ -48,7 +48,7 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
       return;
     }
 
-    var customer = _allCustomers.firstWhere((c) => c.id == _selectedCustomerId);
+    var customer = _allCustomers.firstWhere((c) => c['id'] == _selectedCustomerId);
     
     Navigator.push(
       context,
@@ -79,10 +79,10 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
           Container(
             padding: const EdgeInsets.all(16.0),
             color: Colors.white,
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('Customers').orderBy('name').snapshots(),
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: Supabase.instance.client.from('customers').stream(primaryKey: ['id']).order('name'),
               builder: (context, snapshot) {
-                if (snapshot.hasData) _allCustomers = snapshot.data!.docs;
+                if (snapshot.hasData) _allCustomers = snapshot.data!;
 
                 return Row(
                   children: [
@@ -95,7 +95,7 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                         onChanged: (value) {
                           final match = _allCustomers.where((c) => c['refNumber'] == value.trim()).toList();
                           setState(() {
-                            _selectedCustomerId = match.isNotEmpty ? match.first.id : null;
+                            _selectedCustomerId = match.isNotEmpty ? match.first['id'] : null;
                           });
                         },
                       ),
@@ -108,12 +108,12 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                         isExpanded: true,
                         value: _selectedCustomerId,
                         items: _allCustomers.map((doc) {
-                          return DropdownMenuItem(value: doc.id, child: Text(doc['name']));
+                          return DropdownMenuItem<String>(value: doc['id'] as String, child: Text(doc['name'] as String));
                         }).toList(),
                         onChanged: (val) {
                           setState(() {
                             _selectedCustomerId = val;
-                            final customer = _allCustomers.firstWhere((c) => c.id == val);
+                            final customer = _allCustomers.firstWhere((c) => c['id'] == val);
                             _refController.text = customer['refNumber'];
                           });
                         },
@@ -126,7 +126,7 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
           ),
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
-            color: Theme.of(context).primaryColor.withOpacity(0.1),
+            color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -137,18 +137,18 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
             ),
           ),
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('DailyEntries')
-                  .where('date', isGreaterThanOrEqualTo: '$monthPrefix-01')
-                  .where('date', isLessThanOrEqualTo: '$monthPrefix-31')
-                  .snapshots(),
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: Supabase.instance.client
+                  .from('daily_entries')
+                  .stream(primaryKey: ['id'])
+                  .gte('date', '$monthPrefix-01')
+                  .lte('date', '$monthPrefix-31'),
               builder: (context, snapshot) {
                 
                 Map<int, Map<String, double>> totals = {};
                 
                 if (snapshot.hasData && _selectedCustomerId != null) {
-                  for (var doc in snapshot.data!.docs) {
+                  for (var doc in snapshot.data!) {
                     if (doc['customerId'] == _selectedCustomerId) {
                       try {
                         int day = int.parse(doc['date'].split('-')[2]);
@@ -177,7 +177,6 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                   builder: (context, constraints) {
                     double crossAxisSpacing = 4.0;
                     
-                    // Make grid responsive based on screen width
                     int crossAxisCount = 7;
                     if (constraints.maxWidth >= 1200) {
                       crossAxisCount = 14;
@@ -196,7 +195,6 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                     double totalAvailableWidth = constraints.maxWidth - paddingHorizontal - (crossAxisSpacing * (crossAxisCount - 1));
                     double itemWidth = totalAvailableWidth / crossAxisCount;
                     
-                    // සාමාන්‍ය ෆෝන් එකක දත්ත පේළි 4ම පෙන්වීම සඳහා උස (Height) 130.0 ක් ලෙස සකසා ඇත.
                     double itemHeight = 130.0; 
                     double responsiveAspectRatio = itemWidth / itemHeight;
 
@@ -220,7 +218,6 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                         
                         bool hasData = weight > 0 || advance > 0 || fert > 0 || tea > 0;
 
-                        // --- අනාගත දින පරීක්ෂාව ---
                         DateTime cellDate = DateTime(_selectedMonth.year, _selectedMonth.month, day);
                         bool isFuture = cellDate.isAfter(today);
 
@@ -231,7 +228,7 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                             decoration: BoxDecoration(
                               color: isFuture 
                                   ? Colors.grey.shade200 
-                                  : (hasData ? Theme.of(context).primaryColor.withOpacity(0.08) : Colors.white),
+                                  : (hasData ? Theme.of(context).primaryColor.withValues(alpha: 0.08) : Colors.white),
                               borderRadius: BorderRadius.circular(8.0),
                               border: Border.all(
                                 color: isFuture 
@@ -252,9 +249,8 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
                                         : (hasData ? Colors.black87 : Colors.grey)
                                   )
                                 ),
-                                const Spacer(), // උඩට සහ පහළට ඉඩ සමතුලිත කරයි
+                                const Spacer(), 
                                 
-                                // දත්ත පේළි කිසිදු වෙනස් කිරීමකින් තොරව (FittedBox නොමැතිව)
                                 if (weight > 0) 
                                   _buildAlignedRow(Icons.eco, Colors.green, weight.toStringAsFixed(1)),
                                 if (advance > 0) 
@@ -300,7 +296,7 @@ class _DailyEntriesScreenState extends State<DailyEntriesScreen> {
               text,
               style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
               textAlign: TextAlign.left,
-              overflow: TextOverflow.ellipsis, // දිග වැඩි වුවහොත් තිත් 3කින් පෙන්වයි (...)
+              overflow: TextOverflow.ellipsis, 
             ),
           ),
         ],

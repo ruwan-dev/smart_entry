@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
 class DailyEntryFormScreen extends StatefulWidget {
@@ -23,10 +23,8 @@ class DailyEntryFormScreen extends StatefulWidget {
 class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
   final _formKey = GlobalKey<FormState>();
   
-  // Local Variable to store ID for updating
   String? _existingEntryId;
   
-  // Controllers
   final TextEditingController _grossWeightController = TextEditingController();
   final TextEditingController _deductionController = TextEditingController(text: '0');
   final TextEditingController _advanceController = TextEditingController();
@@ -46,35 +44,33 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
   void initState() {
     super.initState();
     _fetchGlobalPrices(); 
-    _fetchExistingEntry(); // Fetch directly from database on load
+    _fetchExistingEntry(); 
   }
 
-  // කලින් ඇතුළත් කළ දත්ත ඇත්නම් Database එකෙන් සෘජුවම ලබාගැනීම
   Future<void> _fetchExistingEntry() async {
     try {
       String formattedDate = DateFormat('yyyy-MM-dd').format(widget.selectedDate);
       
-      QuerySnapshot query = await FirebaseFirestore.instance
-          .collection('DailyEntries')
-          .where('customerId', isEqualTo: widget.customerId)
-          .where('date', isEqualTo: formattedDate)
-          .limit(1)
-          .get();
+      var response = await Supabase.instance.client
+          .from('daily_entries')
+          .select()
+          .eq('customerId', widget.customerId)
+          .eq('date', formattedDate)
+          .limit(1);
 
-      if (query.docs.isNotEmpty && mounted) {
-        var doc = query.docs.first;
-        var data = doc.data() as Map<String, dynamic>;
+      if (response.isNotEmpty && mounted) {
+        var doc = response.first;
         
         setState(() {
-          _existingEntryId = doc.id; // අනාගත Update කිරීම් සඳහා ID එක save කරගැනීම
+          _existingEntryId = doc['id']; 
           
-          _grossWeightController.text = _formatValue(data['grossWeight']);
-          _deductionController.text = _formatValue(data['deductions'], isDeduction: true);
-          _advanceController.text = _formatValue(data['advanceAmount']);
-          _fertilizer1Controller.text = _formatValue(data['fertilizer1Qty']);
-          _fertilizer2Controller.text = _formatValue(data['fertilizer2Qty']);
-          _teaPacket1Controller.text = _formatValue(data['teaPacket1Qty']);
-          _teaPacket2Controller.text = _formatValue(data['teaPacket2Qty']);
+          _grossWeightController.text = _formatValue(doc['grossWeight']);
+          _deductionController.text = _formatValue(doc['deductions'], isDeduction: true);
+          _advanceController.text = _formatValue(doc['advanceAmount']);
+          _fertilizer1Controller.text = _formatValue(doc['fertilizer1Qty']);
+          _fertilizer2Controller.text = _formatValue(doc['fertilizer2Qty']);
+          _teaPacket1Controller.text = _formatValue(doc['teaPacket1Qty']);
+          _teaPacket2Controller.text = _formatValue(doc['teaPacket2Qty']);
         });
       }
     } catch (e) {
@@ -82,7 +78,6 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
     }
   }
 
-  // දත්ත වර්ගය (String හෝ Number) කුමක් වුවත් නිවැරදිව කියවීම සඳහා යාවත්කාලීන කර ඇත
   String _formatValue(dynamic val, {bool isDeduction = false}) {
     if (val == null) return isDeduction ? '0' : '';
     
@@ -104,14 +99,13 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
 
   Future<void> _fetchGlobalPrices() async {
     try {
-      DocumentSnapshot doc = await FirebaseFirestore.instance.collection('GlobalSettings').doc('prices').get();
-      if (doc.exists && mounted) {
-        var data = doc.data() as Map<String, dynamic>;
+      var response = await Supabase.instance.client.from('global_settings').select().eq('id', 'prices').maybeSingle();
+      if (response != null && mounted) {
         setState(() {
-          _fert1Price = (data['fertilizer1Price'] ?? 0.0).toDouble();
-          _fert2Price = (data['fertilizer2Price'] ?? 0.0).toDouble();
-          _teaPkt1Price = (data['teaPacket1Price'] ?? 0.0).toDouble();
-          _teaPkt2Price = (data['teaPacket2Price'] ?? 0.0).toDouble();
+          _fert1Price = (response['fertilizer1Price'] ?? 0.0).toDouble();
+          _fert2Price = (response['fertilizer2Price'] ?? 0.0).toDouble();
+          _teaPkt1Price = (response['teaPacket1Price'] ?? 0.0).toDouble();
+          _teaPkt2Price = (response['teaPacket2Price'] ?? 0.0).toDouble();
         });
       }
     } catch (e) {
@@ -140,7 +134,6 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
     return null;
   }
 
-  // Edit කරන විට Confirmation එකක් පෙන්වීම
   void _confirmAndSave() {
     if (_formKey.currentState!.validate()) {
       if (_existingEntryId != null) {
@@ -197,16 +190,16 @@ class _DailyEntryFormScreenState extends State<DailyEntryFormScreen> {
       };
 
       if (isUpdate && _existingEntryId != null) {
-        entryData['updatedAt'] = FieldValue.serverTimestamp();
-        await FirebaseFirestore.instance.collection('DailyEntries').doc(_existingEntryId).update(entryData);
+        entryData['updatedAt'] = DateTime.now().toIso8601String();
+        await Supabase.instance.client.from('daily_entries').update(entryData).eq('id', _existingEntryId!);
       } else {
         entryData['customerId'] = widget.customerId;
         entryData['customerName'] = widget.customerName;
         entryData['date'] = DateFormat('yyyy-MM-dd').format(widget.selectedDate);
-        entryData['timestamp'] = widget.selectedDate;
-        entryData['createdAt'] = FieldValue.serverTimestamp();
+        entryData['timestamp'] = widget.selectedDate.toIso8601String();
+        entryData['createdAt'] = DateTime.now().toIso8601String();
         
-        await FirebaseFirestore.instance.collection('DailyEntries').add(entryData);
+        await Supabase.instance.client.from('daily_entries').insert(entryData);
       }
 
       if (mounted) {

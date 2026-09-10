@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-// අලුතින් හදපු widget එක මෙතනට import කරගන්න[cite: 2]
 import 'widgets/monthly_closing_widget.dart'; 
 
 class ReportsScreen extends StatefulWidget {
@@ -22,7 +21,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   String _selectedReportType = 'Daily All Data'; 
   String? _selectedCustomerId;
   
-  List<DocumentSnapshot> _customers = [];
+  List<Map<String, dynamic>> _customers = [];
   bool _isLoading = false;
 
   final List<String> _reportTypes = [
@@ -34,7 +33,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     'Advances & Items'
   ];
 
-  // App Theme Color
   final Color primaryAppColor = const Color(0xFF1976D2);
 
   @override
@@ -44,9 +42,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _fetchCustomers() async {
-    var snap = await FirebaseFirestore.instance.collection('Customers').orderBy('name').get();
+    var snap = await Supabase.instance.client.from('customers').select().order('name');
     setState(() {
-      _customers = snap.docs;
+      _customers = List.from(snap);
     });
   }
 
@@ -80,7 +78,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  // --- PDF වාර්තා සැකසීමේ Logic එක (කිසිදු වෙනසක් කර නොමැත) ---[cite: 2]
   Future<void> _generatePdfReport() async {
     if (_selectedReportType == 'Customer Wise' && _selectedCustomerId == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('කරුණාකර පාරිභෝගිකයෙකු තෝරන්න')));
@@ -91,24 +88,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     try {
       double fert1Price = 0, fert2Price = 0, teaPkt1Price = 0, teaPkt2Price = 0;
-      var priceDoc = await FirebaseFirestore.instance.collection('GlobalSettings').doc('prices').get();
-      if (priceDoc.exists) {
-        var pData = priceDoc.data()!;
-        fert1Price = (pData['fertilizer1Price'] ?? 0.0).toDouble();
-        fert2Price = (pData['fertilizer2Price'] ?? 0.0).toDouble();
-        teaPkt1Price = (pData['teaPacket1Price'] ?? 0.0).toDouble();
-        teaPkt2Price = (pData['teaPacket2Price'] ?? 0.0).toDouble();
+      var priceDoc = await Supabase.instance.client.from('global_settings').select().eq('id', 'prices').maybeSingle();
+      if (priceDoc != null) {
+        fert1Price = (priceDoc['fertilizer1Price'] ?? 0.0).toDouble();
+        fert2Price = (priceDoc['fertilizer2Price'] ?? 0.0).toDouble();
+        teaPkt1Price = (priceDoc['teaPacket1Price'] ?? 0.0).toDouble();
+        teaPkt2Price = (priceDoc['teaPacket2Price'] ?? 0.0).toDouble();
       }
 
       DateTime endOfDay = DateTime(_endDate.year, _endDate.month, _endDate.day, 23, 59, 59);
 
-      var query = FirebaseFirestore.instance
-          .collection('DailyEntries')
-          .where('timestamp', isGreaterThanOrEqualTo: _startDate)
-          .where('timestamp', isLessThanOrEqualTo: endOfDay);
+      var snap = await Supabase.instance.client
+          .from('daily_entries')
+          .select()
+          .gte('timestamp', _startDate.toIso8601String())
+          .lte('timestamp', endOfDay.toIso8601String());
 
-      var snap = await query.get();
-      List<QueryDocumentSnapshot> entries = snap.docs;
+      List<Map<String, dynamic>> entries = List.from(snap);
 
       if (_selectedReportType == 'Customer Wise') {
         entries = entries.where((doc) => doc['customerId'] == _selectedCustomerId).toList();
@@ -128,11 +124,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ).toList();
       }
 
-      entries.sort((a, b) => (a['timestamp'] as Timestamp).compareTo(b['timestamp'] as Timestamp));
+      entries.sort((a, b) => DateTime.parse(a['timestamp']).compareTo(DateTime.parse(b['timestamp'])));
 
       Map<String, String> customerNames = {};
       for (var c in _customers) {
-        customerNames[c.id] = c['name'] ?? 'Unknown';
+        customerNames[c['id']] = c['name'] ?? 'Unknown';
       }
 
       final pdf = pw.Document();
@@ -152,9 +148,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (showTeaPkt) { headers.add('Tea Pkt'); alignments[colIndex++] = pw.Alignment.center; }
       if (showTotalDed) { headers.add('Total Ded.'); alignments[colIndex++] = pw.Alignment.centerRight; }
 
-      List<List<String>> tableData = entries.map((doc) {
-        var data = doc.data() as Map<String, dynamic>;
-        String date = DateFormat('MM-dd').format((data['timestamp'] as Timestamp).toDate());
+      List<List<String>> tableData = entries.map((data) {
+        String date = DateFormat('MM-dd').format(DateTime.parse(data['timestamp']));
         String cName = customerNames[data['customerId']] ?? '-';
         
         double w = (data['netWeight'] ?? 0).toDouble();
@@ -414,7 +409,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           isExpanded: true,
           icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.blueGrey),
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1F2937)),
-          items: _customers.map((doc) => DropdownMenuItem(value: doc.id, child: Text(doc['name'] ?? ''))).toList(),
+          items: _customers.map((doc) => DropdownMenuItem<String>(value: doc['id'] as String, child: Text((doc['name'] ?? '') as String))).toList(),
           onChanged: (val) => setState(() => _selectedCustomerId = val),
         ),
       ),

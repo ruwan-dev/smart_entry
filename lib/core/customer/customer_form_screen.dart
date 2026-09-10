@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:smart_entry/core/entries/daily_entries_screen.dart';
 import '../billing/monthly_bill_screen.dart';
 
@@ -49,12 +49,12 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
         String refNumber = _refNumberController.text.trim();
         String name = _nameController.text.trim();
 
-        var querySnapshot = await FirebaseFirestore.instance
-            .collection('Customers')
-            .where('refNumber', isEqualTo: refNumber)
-            .get();
+        var querySnapshot = await Supabase.instance.client
+            .from('customers')
+            .select()
+            .eq('refNumber', refNumber);
 
-        if (querySnapshot.docs.isNotEmpty) {
+        if (querySnapshot.isNotEmpty) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -67,13 +67,14 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
           return; 
         }
 
-        DocumentReference docRef = await FirebaseFirestore.instance.collection('Customers').add({
+        var response = await Supabase.instance.client.from('customers').insert({
           'refNumber': refNumber,
           'name': name,
           'address': _addressController.text.trim(),
           'phone': _phoneController.text.trim(),
-          'registeredAt': FieldValue.serverTimestamp(),
-        });
+        }).select();
+
+        String docId = response.first['id'];
 
         _refNumberController.clear();
         _nameController.clear();
@@ -89,7 +90,7 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
             context,
             MaterialPageRoute(
               builder: (context) => DailyEntriesScreen(
-                initialCustomerId: docRef.id,
+                initialCustomerId: docId,
                 initialRefNumber: refNumber,
               ),
             ),
@@ -139,18 +140,12 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
       );
 
       try {
-        var entriesSnapshot = await FirebaseFirestore.instance
-            .collection('DailyEntries')
-            .where('customerId', isEqualTo: docId)
-            .get();
+        await Supabase.instance.client
+            .from('daily_entries')
+            .delete()
+            .eq('customerId', docId);
 
-        WriteBatch batch = FirebaseFirestore.instance.batch();
-        for (var doc in entriesSnapshot.docs) {
-          batch.delete(doc.reference);
-        }
-        await batch.commit(); 
-
-        await FirebaseFirestore.instance.collection('Customers').doc(docId).delete();
+        await Supabase.instance.client.from('customers').delete().eq('id', docId);
 
         if (context.mounted) {
           Navigator.pop(context); 
@@ -292,14 +287,13 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
             const SizedBox(height: 16),
 
             // --- පාරිභෝගික ලැයිස්තුව සහ Pagination ---
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('Customers').orderBy('name').snapshots(),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: Supabase.instance.client.from('customers').stream(primaryKey: ['id']).order('name'),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
                 
                 // 1. Search කිරීම (Filter)
-                var filteredDocs = snapshot.data!.docs.where((doc) {
-                  var data = doc.data() as Map<String, dynamic>; 
+                var filteredDocs = snapshot.data!.where((data) {
                   String name = (data['name'] ?? '').toString().toLowerCase();
                   String ref = (data['refNumber'] ?? '').toString().toLowerCase();
                   return name.contains(_searchQuery) || ref.contains(_searchQuery);
@@ -332,10 +326,9 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                       itemCount: paginatedDocs.length,
                       separatorBuilder: (context, index) => const SizedBox(height: 12), 
                       itemBuilder: (context, index) {
-                        var doc = paginatedDocs[index];
-                        var data = doc.data() as Map<String, dynamic>; 
+                        var data = paginatedDocs[index];
                         
-                        return _buildResponsiveCustomerItem(doc.id, data);
+                        return _buildResponsiveCustomerItem(data['id'], data);
                       },
                     ),
                     

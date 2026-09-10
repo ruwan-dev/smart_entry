@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class OutstandingListScreen extends StatefulWidget {
   final List<Map<String, dynamic>> arrearsList;
@@ -43,15 +43,14 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
       int daysToSubtract = _selectedMonths * 30;
       DateTime targetPastDate = DateTime.now().subtract(Duration(days: daysToSubtract));
       
-      var snapshot = await FirebaseFirestore.instance
-          .collection('DailyEntries') 
-          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(targetPastDate)) 
-          .get();
+      var snapshot = await Supabase.instance.client
+          .from('daily_entries') 
+          .select('customerId, netWeight')
+          .gte('timestamp', targetPastDate.toIso8601String());
 
       Map<String, double> totals = {};
       
-      for (var doc in snapshot.docs) {
-        var data = doc.data();
+      for (var data in snapshot) {
         String cId = data['customerId'] ?? '';
         double w = (data['netWeight'] ?? 0).toDouble();
         totals[cId] = (totals[cId] ?? 0.0) + w;

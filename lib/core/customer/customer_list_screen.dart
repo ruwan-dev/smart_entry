@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/entries/daily_entry_form_screen.dart';
 import '../billing/monthly_bill_screen.dart';
 import 'customer_form_screen.dart'; 
@@ -28,7 +28,6 @@ class CustomerListScreen extends StatelessWidget {
     ) ?? false;
 
     if (confirm) {
-      // Deletion progress එකක් පෙන්වීමට
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -36,24 +35,15 @@ class CustomerListScreen extends StatelessWidget {
       );
 
       try {
-        // 1. පාරිභෝගිකයාට අදාළ සියලුම Daily Entries (දෛනික සටහන්) ලබාගැනීම
-        var entriesSnapshot = await FirebaseFirestore.instance
-            .collection('DailyEntries')
-            .where('customerId', isEqualTo: docId)
-            .get();
+        await Supabase.instance.client
+            .from('daily_entries')
+            .delete()
+            .eq('customerId', docId);
 
-        // 2. ලබාගත් සියලුම දෛනික සටහන් එකින් එක මකා දැමීම (Batch delete)
-        WriteBatch batch = FirebaseFirestore.instance.batch();
-        for (var doc in entriesSnapshot.docs) {
-          batch.delete(doc.reference);
-        }
-        await batch.commit(); // එකවර සියල්ල මකා දමයි
-
-        // 3. අවසානයේ පාරිභෝගිකයාව මකා දැමීම
-        await FirebaseFirestore.instance.collection('Customers').doc(docId).delete();
+        await Supabase.instance.client.from('customers').delete().eq('id', docId);
 
         if (context.mounted) {
-          Navigator.pop(context); // Progress circle එක වැසීම
+          Navigator.pop(context); 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('පාරිභෝගිකයා සහ අදාළ සියලුම සටහන් සාර්ථකව ඉවත් කරන ලදී'),
@@ -63,7 +53,7 @@ class CustomerListScreen extends StatelessWidget {
         }
       } catch (e) {
         if (context.mounted) {
-          Navigator.pop(context); // Progress circle එක වැසීම
+          Navigator.pop(context); 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('දෝෂයකි: $e'),
@@ -95,24 +85,22 @@ class CustomerListScreen extends StatelessWidget {
         child: const Icon(Icons.person_add, color: Colors.white),
       ),
 
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('Customers').orderBy('name').snapshots(),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: Supabase.instance.client.from('customers').stream(primaryKey: ['id']).order('name'),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text('No customers found.'));
           }
 
           return ListView.builder(
             padding: const EdgeInsets.all(12),
-            itemCount: snapshot.data!.docs.length,
+            itemCount: snapshot.data!.length,
             itemBuilder: (context, index) {
-              var doc = snapshot.data!.docs[index];
-              
-              // ආරක්ෂිතව Data ලබාගැනීම (Crash වීම වැළැක්වීමට)
-              var data = doc.data() as Map<String, dynamic>; 
+              var data = snapshot.data![index];
+              String docId = data['id'];
 
               return Card(
                 elevation: 2,
@@ -120,9 +108,9 @@ class CustomerListScreen extends StatelessWidget {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                    backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
                     child: Text(
-                      data['refNumber'] ?? '', // ආරක්ෂිතයි
+                      data['refNumber'] ?? '', 
                       style: TextStyle(
                         color: Theme.of(context).primaryColor, 
                         fontSize: 12, 
@@ -143,7 +131,7 @@ class CustomerListScreen extends StatelessWidget {
                           MaterialPageRoute(
                             builder: (context) => DailyEntryFormScreen(
                               selectedDate: DateTime.now(),
-                              customerId: doc.id,
+                              customerId: docId,
                               customerName: data['name'] ?? '',
                               refNumber: data['refNumber'] ?? '',
                             ),
@@ -154,14 +142,14 @@ class CustomerListScreen extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (context) => MonthlyBillScreen(
-                              customerId: doc.id,
+                              customerId: docId,
                               customerName: data['name'] ?? '',
                               refNumber: data['refNumber'] ?? '',
                             ),
                           ),
                         );
                       } else if (value == 2) {
-                        _deleteCustomer(context, doc.id, data['name'] ?? '');
+                        _deleteCustomer(context, docId, data['name'] ?? '');
                       }
                     },
                     itemBuilder: (context) => [

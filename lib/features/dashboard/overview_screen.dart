@@ -1,6 +1,6 @@
 import 'package:flutter/gestures.dart'; 
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 
@@ -91,18 +91,18 @@ class _OverviewScreenState extends State<OverviewScreen> {
     }
 
     try {
-      var latestSummarySnap = await FirebaseFirestore.instance
-          .collection('MonthlySummaries')
-          .orderBy('finalizedAt', descending: true)
-          .limit(2) 
-          .get();
+      var latestSummaries = await Supabase.instance.client
+          .from('monthly_summaries')
+          .select()
+          .order('finalizedAt', ascending: false)
+          .limit(2);
 
-      if (latestSummarySnap.docs.isNotEmpty) {
-        _latestSummaryData = latestSummarySnap.docs.first.data();
-        _latestSummaryId = latestSummarySnap.docs.first.id; 
+      if (latestSummaries.isNotEmpty) {
+        _latestSummaryData = latestSummaries.first;
+        _latestSummaryId = latestSummaries.first['id']; 
         
-        if (latestSummarySnap.docs.length > 1) {
-          _previousSummaryData = latestSummarySnap.docs[1].data();
+        if (latestSummaries.length > 1) {
+          _previousSummaryData = latestSummaries[1];
         } else {
           _previousSummaryData = null;
         }
@@ -112,38 +112,36 @@ class _OverviewScreenState extends State<OverviewScreen> {
         _previousSummaryData = null;
       }
 
-      var priceDoc = await FirebaseFirestore.instance.collection('GlobalSettings').doc('prices').get();
-      if (priceDoc.exists) {
-        var pData = priceDoc.data()!;
-        fert1Price = (pData['fertilizer1Price'] ?? 0.0).toDouble();
-        fert2Price = (pData['fertilizer2Price'] ?? 0.0).toDouble();
-        teaPkt1Price = (pData['teaPacket1Price'] ?? 0.0).toDouble();
-        teaPkt2Price = (pData['teaPacket2Price'] ?? 0.0).toDouble();
+      var priceDoc = await Supabase.instance.client.from('global_settings').select().eq('id', 'prices').maybeSingle();
+      if (priceDoc != null) {
+        fert1Price = (priceDoc['fertilizer1Price'] ?? 0.0).toDouble();
+        fert2Price = (priceDoc['fertilizer2Price'] ?? 0.0).toDouble();
+        teaPkt1Price = (priceDoc['teaPacket1Price'] ?? 0.0).toDouble();
+        teaPkt2Price = (priceDoc['teaPacket2Price'] ?? 0.0).toDouble();
       }
 
-      var ratesSnap = await FirebaseFirestore.instance.collection('MonthlyRates').get();
+      var ratesSnap = await Supabase.instance.client.from('monthly_rates').select();
       Map<String, double> ratesMap = {};
-      for (var doc in ratesSnap.docs) {
-        ratesMap[doc.id] = (doc.data()['teaRate'] ?? 0.0).toDouble();
+      for (var doc in ratesSnap) {
+        ratesMap[doc['id']] = (doc['teaRate'] ?? 0.0).toDouble();
       }
 
-      var customersSnapshot = await FirebaseFirestore.instance.collection('Customers').get();
+      var customersSnapshot = await Supabase.instance.client.from('customers').select();
       Map<String, String> customerNames = {};
-      for (var doc in customersSnapshot.docs) {
-        customerNames[doc.id] = doc.data()['name'] ?? 'Unknown';
+      for (var doc in customersSnapshot) {
+        customerNames[doc['id']] = doc['name'] ?? 'Unknown';
       }
 
-      var filteredEntries = await FirebaseFirestore.instance
-          .collection('DailyEntries')
-          .where('timestamp', isGreaterThanOrEqualTo: start)
-          .where('timestamp', isLessThanOrEqualTo: end)
-          .get();
+      var filteredEntries = await Supabase.instance.client
+          .from('daily_entries')
+          .select()
+          .gte('timestamp', start.toIso8601String())
+          .lte('timestamp', end.toIso8601String());
 
       double tw = 0.0, ta = 0.0, f1 = 0, f2 = 0, t1 = 0, t2 = 0;
       Map<String, double> supplierWeightMap = {};
 
-      for (var doc in filteredEntries.docs) {
-        var d = doc.data();
+      for (var d in filteredEntries) {
         double w = (d['netWeight'] ?? 0.0).toDouble();
         tw += w;
         ta += (d['advanceAmount'] ?? 0.0).toDouble();
@@ -158,47 +156,59 @@ class _OverviewScreenState extends State<OverviewScreen> {
       var sortedSuppliers = supplierWeightMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
       _topSuppliers = sortedSuppliers.take(5).map((e) => {'name': customerNames[e.key] ?? 'Unknown', 'weight': e.value}).toList();
 
-      var allEntriesSnapshot = await FirebaseFirestore.instance.collection('DailyEntries').get();
-      Map<String, double> customerIncomeMap = {};
-      Map<String, double> customerDeductionMap = {};
+      // ✅ CORRECT: Read from finalized_bills — these are official locked bills
+      // that already include: transport cost, item prices, previous month arrears rollover
+      // For each customer, get their LATEST finalized bill.
+      // If netPayable < 0, that is the true outstanding amount.
+      var allFinalizedBills = await Supabase.instance.client
+          .from('finalized_bills')
+          .select('customerId, customerName, refNumber, billData, finalizedAt')
+          .order('finalizedAt', ascending: false);
 
-      for (var doc in allEntriesSnapshot.docs) {
-        var data = doc.data();
-        String cId = data['customerId'] ?? '';
+      // Group by customerId — keep only the LATEST bill per customer
+      Map<String, Map<String, dynamic>> latestBillPerCustomer = {};
+      for (var bill in allFinalizedBills) {
+        String cId = bill['customerId'] ?? '';
         if (cId.isEmpty) continue;
-        DateTime ts = (data['timestamp'] as Timestamp).toDate();
-        String monthKey = "${ts.year}-${DateFormat('MMMM').format(ts)}";
-        double w = (data['netWeight'] ?? 0.0).toDouble();
-        double adv = (data['advanceAmount'] ?? 0.0).toDouble();
-        double qF1 = (data['fertilizer1Qty'] ?? 0.0).toDouble();
-        double qF2 = (data['fertilizer2Qty'] ?? 0.0).toDouble();
-        double qT1 = (data['teaPacket1Qty'] ?? 0.0).toDouble();
-        double qT2 = (data['teaPacket2Qty'] ?? 0.0).toDouble();
-        double rate = ratesMap[monthKey] ?? 0.0;
-        customerIncomeMap[cId] = (customerIncomeMap[cId] ?? 0.0) + (w * rate);
-        customerDeductionMap[cId] = (customerDeductionMap[cId] ?? 0.0) + (adv + (qF1 * fert1Price) + (qF2 * fert2Price) + (qT1 * teaPkt1Price) + (qT2 * teaPkt2Price));
+        // Since sorted by finalizedAt desc, first occurrence = latest
+        if (!latestBillPerCustomer.containsKey(cId)) {
+          latestBillPerCustomer[cId] = bill;
+        }
       }
 
       double totalOverallOutstanding = 0.0;
       Map<String, double> arrearsMap = {};
-      for (String cId in customerDeductionMap.keys) {
-        double income = customerIncomeMap[cId] ?? 0.0;
-        double deduction = customerDeductionMap[cId] ?? 0.0;
-        if (deduction > income) {
-          double arrear = deduction - income;
-          arrearsMap[cId] = arrear;
-          totalOverallOutstanding += arrear; 
+
+      for (var entry in latestBillPerCustomer.entries) {
+        String cId = entry.key;
+        var bill = entry.value;
+        var billData = bill['billData'];
+        if (billData is! Map) continue;
+
+        double netPayable = (billData['netPayable'] ?? 0.0) is num
+            ? (billData['netPayable'] ?? 0.0).toDouble()
+            : double.tryParse(billData['netPayable'].toString()) ?? 0.0;
+
+        // If latest bill netPayable is negative → customer owes that amount
+        if (netPayable < 0) {
+          double outstanding = netPayable.abs();
+          arrearsMap[cId] = outstanding;
+          totalOverallOutstanding += outstanding;
         }
       }
 
       _allArrears = arrearsMap.entries.toList().map((e) => {
-        'id': e.key, 
-        'name': customerNames[e.key] ?? 'Unknown', 
-        'amount': e.value
+        'id': e.key,
+        'name': customerNames[e.key] ?? latestBillPerCustomer[e.key]?['customerName'] ?? 'Unknown',
+        'customerNumber': customersSnapshot.firstWhere(
+          (c) => c['id'] == e.key, 
+          orElse: () => {'refNumber': ''},
+        )['refNumber'] ?? '',
+        'amount': e.value,
       }).toList()..sort((a, b) => (b['amount'] as double).compareTo(a['amount'] as double));
 
       setState(() {
-        _totalCustomers = customersSnapshot.docs.length;
+        _totalCustomers = customersSnapshot.length;
         _totalWeight = tw;
         _totalAdvance = ta;
         _totalFertilizer1 = f1; _totalFertilizer2 = f2;
@@ -209,6 +219,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
         _isSummaryLoading = false;
       });
     } catch (e) { 
+      print(e);
       setState(() {
         _isLoading = false;
         _isSummaryLoading = false;
@@ -232,27 +243,27 @@ class _OverviewScreenState extends State<OverviewScreen> {
     }
 
     try {
-      var snapshot = await FirebaseFirestore.instance.collection('DailyEntries').where('timestamp', isGreaterThanOrEqualTo: start).get();
+      var snapshot = await Supabase.instance.client.from('daily_entries').select().gte('timestamp', start.toIso8601String());
       List<double> tv = []; List<String> tl = [];
       
       if (_chartFilter == 'දිනපතා') {
         tv = List.filled(30, 0.0);
         for (int i = 29; i >= 0; i--) tl.add(DateFormat('MMM dd').format(now.subtract(Duration(days: i))));
-        for (var doc in snapshot.docs) {
-          DateTime ts = (doc.data()['timestamp'] as Timestamp).toDate();
+        for (var doc in snapshot) {
+          DateTime ts = DateTime.parse(doc['timestamp'].toString());
           int diff = DateTime(now.year, now.month, now.day).difference(DateTime(ts.year, ts.month, ts.day)).inDays;
-          if (diff >= 0 && diff < 30) tv[29 - diff] += (doc.data()['netWeight'] ?? 0.0).toDouble();
+          if (diff >= 0 && diff < 30) tv[29 - diff] += (doc['netWeight'] ?? 0.0).toDouble();
         }
       } else if (_chartFilter == 'මාසිකව') {
         tv = List.filled(12, 0.0);
         for (int i = 11; i >= 0; i--) {
           tl.add(DateFormat('MMM').format(DateTime(now.year, now.month - i, 1)));
         }
-        for (var doc in snapshot.docs) {
-          DateTime ts = (doc.data()['timestamp'] as Timestamp).toDate();
+        for (var doc in snapshot) {
+          DateTime ts = DateTime.parse(doc['timestamp'].toString());
           int monthDiff = (now.year - ts.year) * 12 + now.month - ts.month;
           if (monthDiff >= 0 && monthDiff < 12) {
-            tv[11 - monthDiff] += (doc.data()['netWeight'] ?? 0.0).toDouble();
+            tv[11 - monthDiff] += (doc['netWeight'] ?? 0.0).toDouble();
           }
         }
       } else if (_chartFilter == 'වාර්ෂිකව') {
@@ -260,11 +271,11 @@ class _OverviewScreenState extends State<OverviewScreen> {
         for (int i = 4; i >= 0; i--) {
           tl.add((now.year - i).toString());
         }
-        for (var doc in snapshot.docs) {
-          DateTime ts = (doc.data()['timestamp'] as Timestamp).toDate();
+        for (var doc in snapshot) {
+          DateTime ts = DateTime.parse(doc['timestamp'].toString());
           int yearDiff = now.year - ts.year;
           if (yearDiff >= 0 && yearDiff < 5) {
-            tv[4 - yearDiff] += (doc.data()['netWeight'] ?? 0.0).toDouble();
+            tv[4 - yearDiff] += (doc['netWeight'] ?? 0.0).toDouble();
           }
         }
       }
