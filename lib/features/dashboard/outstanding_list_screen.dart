@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/billing/monthly_bill_screen.dart';
+import 'customer_timeline_screen.dart';
+import '../../core/widgets/skeleton_box.dart';
 
 class OutstandingListScreen extends StatefulWidget {
   final List<Map<String, dynamic>> arrearsList;
@@ -20,14 +23,16 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
 
   // Settings
   double _deductionPercentage = 40.0;
-  final TextEditingController _rateController = TextEditingController(text: "200");
+  final TextEditingController _rateController = TextEditingController(
+    text: "200",
+  );
   int _selectedMonths = 3;
 
   // Pagination & Sorting State
   List<Map<String, dynamic>> _displayList = [];
   int _currentPage = 1;
   final int _itemsPerPage = 5;
-  String _sortOption = 'amount_desc'; 
+  String _sortOption = 'amount_desc';
 
   @override
   void initState() {
@@ -41,15 +46,26 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
     setState(() => _isLoading = true);
     try {
       int daysToSubtract = _selectedMonths * 30;
-      DateTime targetPastDate = DateTime.now().subtract(Duration(days: daysToSubtract));
-      
-      var snapshot = await Supabase.instance.client
-          .from('daily_entries') 
-          .select('customerId, netWeight')
-          .gte('timestamp', targetPastDate.toIso8601String());
+      DateTime targetPastDate = DateTime.now().subtract(
+        Duration(days: daysToSubtract),
+      );
+
+      List<dynamic> snapshot = [];
+      int offset = 0;
+      int limit = 1000;
+      while (true) {
+        var chunk = await Supabase.instance.client
+            .from('daily_entries')
+            .select('customerId, netWeight')
+            .gte('timestamp', targetPastDate.toIso8601String())
+            .range(offset, offset + limit - 1);
+        snapshot.addAll(chunk);
+        if (chunk.length < limit) break;
+        offset += limit;
+      }
 
       Map<String, double> totals = {};
-      
+
       for (var data in snapshot) {
         String cId = data['customerId'] ?? '';
         double w = (data['netWeight'] ?? 0).toDouble();
@@ -58,7 +74,7 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
 
       Map<String, double> averages = {};
       totals.forEach((key, value) {
-        averages[key] = value / _selectedMonths; 
+        averages[key] = value / _selectedMonths;
       });
 
       if (mounted) {
@@ -71,7 +87,10 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('දත්ත ලබාගැනීමේ දෝෂයක්: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('දත්ත ලබාගැනීමේ දෝෂයක්: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -80,32 +99,49 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
   void _applySorting() {
     setState(() {
       if (_sortOption == 'amount_desc') {
-        _displayList.sort((a, b) => (b['amount'] ?? 0).toDouble().compareTo((a['amount'] ?? 0).toDouble()));
+        _displayList.sort(
+          (a, b) => (b['amount'] ?? 0).toDouble().compareTo(
+            (a['amount'] ?? 0).toDouble(),
+          ),
+        );
       } else if (_sortOption == 'amount_asc') {
-        _displayList.sort((a, b) => (a['amount'] ?? 0).toDouble().compareTo((b['amount'] ?? 0).toDouble()));
+        _displayList.sort(
+          (a, b) => (a['amount'] ?? 0).toDouble().compareTo(
+            (b['amount'] ?? 0).toDouble(),
+          ),
+        );
       } else if (_sortOption == 'name_asc') {
-        _displayList.sort((a, b) => (a['name'] ?? '').toString().compareTo((b['name'] ?? '').toString()));
+        _displayList.sort(
+          (a, b) => (a['name'] ?? '').toString().compareTo(
+            (b['name'] ?? '').toString(),
+          ),
+        );
       } else if (_sortOption == 'name_desc') {
-        _displayList.sort((a, b) => (b['name'] ?? '').toString().compareTo((b['name'] ?? '').toString()));
+        _displayList.sort(
+          (a, b) => (b['name'] ?? '').toString().compareTo(
+            (b['name'] ?? '').toString(),
+          ),
+        );
       } else if (_sortOption == 'ref_asc') {
         _displayList.sort((a, b) {
           String refA = (a['customerNumber'] ?? '').toString();
           String refB = (b['customerNumber'] ?? '').toString();
-          
+
           double? numA = double.tryParse(refA);
           double? numB = double.tryParse(refB);
-          
+
           if (numA != null && numB != null) {
             return numA.compareTo(numB);
           }
           return refA.compareTo(refB);
         });
       }
-      _currentPage = 1; 
+      _currentPage = 1;
     });
   }
 
-  int get _totalPages => (_displayList.isEmpty) ? 1 : (_displayList.length / _itemsPerPage).ceil();
+  int get _totalPages =>
+      (_displayList.isEmpty) ? 1 : (_displayList.length / _itemsPerPage).ceil();
 
   List<Map<String, dynamic>> get _paginatedList {
     int start = (_currentPage - 1) * _itemsPerPage;
@@ -118,15 +154,15 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
   // සංශෝධනය කරන ලද Recovery Time Function එක
   String _getRecoveryTime(double loan, double monthlyDeduction) {
     if (monthlyDeduction <= 0) return "අයකරගත නොහැක";
-    
+
     // ආසන්නතම අගයට රවුම් කිරීම (round)
     int totalMonths = (loan / monthlyDeduction).round();
-    
+
     // මාස 1කට වඩා අඩු නම් අවම වශයෙන් මාස 1ක් ලෙස පෙන්වීම
     if (totalMonths < 1) {
       totalMonths = 1;
     }
-    
+
     return "මාස $totalMonths";
   }
 
@@ -205,8 +241,9 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
   Widget _buildSkeletonList() {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 12),
-      itemCount: 5, 
-      separatorBuilder: (context, index) => const Divider(height: 1, thickness: 1, color: Color(0xFFE5E7EB)),
+      itemCount: 5,
+      separatorBuilder: (context, index) =>
+          const Divider(height: 1, thickness: 1, color: Color(0xFFE5E7EB)),
       itemBuilder: (context, index) => _buildSkeletonItem(),
     );
   }
@@ -216,7 +253,14 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       appBar: AppBar(
-        title: const Text('Outstanding Balance', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
+        title: const Text(
+          'Outstanding Balance',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF111827),
+          ),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Color(0xFF111827)),
@@ -229,12 +273,24 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
               _applySorting();
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(value: 'amount_desc', child: Text('Highest Loan First')),
-              const PopupMenuItem(value: 'amount_asc', child: Text('Lowest Loan First')),
+              const PopupMenuItem(
+                value: 'amount_desc',
+                child: Text('Highest Loan First'),
+              ),
+              const PopupMenuItem(
+                value: 'amount_asc',
+                child: Text('Lowest Loan First'),
+              ),
               const PopupMenuDivider(),
               const PopupMenuItem(value: 'name_asc', child: Text('Name (A-Z)')),
-              const PopupMenuItem(value: 'name_desc', child: Text('Name (Z-A)')),
-              const PopupMenuItem(value: 'ref_asc', child: Text('Ref Num (0-9)')),
+              const PopupMenuItem(
+                value: 'name_desc',
+                child: Text('Name (Z-A)'),
+              ),
+              const PopupMenuItem(
+                value: 'ref_asc',
+                child: Text('Ref Num (0-9)'),
+              ),
             ],
           ),
           const SizedBox(width: 8),
@@ -256,7 +312,14 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
                   children: [
                     const Expanded(
                       flex: 3,
-                      child: Text('මාසික කපාගැනීමේ %', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF374151))),
+                      child: Text(
+                        'මාසික කපාගැනීමේ %',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: Color(0xFF374151),
+                        ),
+                      ),
                     ),
                     Expanded(
                       flex: 5,
@@ -266,14 +329,23 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
                         max: 100,
                         divisions: 18,
                         label: '${_deductionPercentage.round()}%',
-                        activeColor: const Color(0xFF2563EB), 
+                        activeColor: const Color(0xFF2563EB),
                         inactiveColor: Colors.blue.shade100,
-                        onChanged: (val) => setState(() => _deductionPercentage = val),
+                        onChanged: (val) =>
+                            setState(() => _deductionPercentage = val),
                       ),
                     ),
                     SizedBox(
                       width: 40,
-                      child: Text('${_deductionPercentage.round()}%', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF2563EB), fontSize: 14), textAlign: TextAlign.right),
+                      child: Text(
+                        '${_deductionPercentage.round()}%',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF2563EB),
+                          fontSize: 14,
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
                     ),
                   ],
                 ),
@@ -283,7 +355,14 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
                   children: [
                     Row(
                       children: [
-                        const Text('තේ දළු කිලෝ 1 ක මිල: Rs.', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF374151))),
+                        const Text(
+                          'තේ දළු කිලෝ 1 ක මිල: Rs.',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: Color(0xFF374151),
+                          ),
+                        ),
                         const SizedBox(width: 12),
                         SizedBox(
                           width: 80,
@@ -292,14 +371,23 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
                             controller: _rateController,
                             keyboardType: TextInputType.number,
                             textAlign: TextAlign.center,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
                             decoration: InputDecoration(
                               filled: true,
                               fillColor: const Color(0xFFF3F4F6),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 0,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide.none,
+                              ),
                             ),
-                            onChanged: (val) => setState(() {}), 
+                            onChanged: (val) => setState(() {}),
                           ),
                         ),
                       ],
@@ -309,7 +397,14 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    const Text('සාමාන්‍යය සඳහා මාස ගණන:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF374151))),
+                    const Text(
+                      'සාමාන්‍යය සඳහා මාස ගණන:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: Color(0xFF374151),
+                      ),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Row(
@@ -322,23 +417,34 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
                                 setState(() {
                                   _selectedMonths = month;
                                 });
-                                _fetchAllAverages(); 
+                                _fetchAllAverages();
                               }
                             },
                             borderRadius: BorderRadius.circular(8),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
                               decoration: BoxDecoration(
-                                color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFF3F4F6),
+                                color: isSelected
+                                    ? const Color(0xFF2563EB)
+                                    : const Color(0xFFF3F4F6),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: isSelected ? const Color(0xFF2563EB) : Colors.transparent),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? const Color(0xFF2563EB)
+                                      : Colors.transparent,
+                                ),
                               ),
                               child: Text(
                                 '$month',
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold,
-                                  color: isSelected ? Colors.white : const Color(0xFF4B5563),
+                                  color: isSelected
+                                      ? Colors.white
+                                      : const Color(0xFF4B5563),
                                 ),
                               ),
                             ),
@@ -352,96 +458,158 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
             ),
           ),
 
-          // List View Area 
+          // List View Area
           Expanded(
             child: _displayList.isEmpty
-                ? const Center(child: Text('කිසිදු හිඟ මුදලක් නොමැත 🎉', style: TextStyle(fontSize: 16, color: Color(0xFF10B981), fontWeight: FontWeight.w600)))
+                ? const Center(
+                    child: Text(
+                      'කිසිදු හිඟ මුදලක් නොමැත 🎉',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Color(0xFF10B981),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
                 : _isLoading
-                    ? _buildSkeletonList() 
-                    : ListView.separated(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        itemCount: _paginatedList.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1, thickness: 1, color: Color(0xFFE5E7EB)),
-                        itemBuilder: (context, index) {
-                          var arrear = _paginatedList[index];
-                          String cId = arrear['id'] ?? 'N/A';
-                          String cNum = arrear['customerNumber']?.toString() ?? '';
-                          if (cNum.isEmpty) cNum = cId; 
-                          
-                          // Calculations
-                          double avgKilos = _avgLeavesMap[cId] ?? 0.0;
-                          double rate = double.tryParse(_rateController.text) ?? 200.0;
-                          double estimatedMonthlyIncome = avgKilos * rate;
-                          double monthlyDeductionLimit = estimatedMonthlyIncome * (_deductionPercentage / 100);
-                          double loanAmount = (arrear['amount'] ?? 0).toDouble();
-                          String recoveryTime = _getRecoveryTime(loanAmount, monthlyDeductionLimit);
+                ? _buildSkeletonList()
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    itemCount: _paginatedList.length,
+                    separatorBuilder: (context, index) => const Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: Color(0xFFE5E7EB),
+                    ),
+                    itemBuilder: (context, index) {
+                      var arrear = _paginatedList[index];
+                      String cId = arrear['id'] ?? 'N/A';
+                      String cNum = arrear['customerNumber']?.toString() ?? '';
+                      if (cNum.isEmpty) cNum = cId;
 
-                          int actualRowNumber = ((_currentPage - 1) * _itemsPerPage) + index + 1;
+                      // Calculations
+                      double avgKilos = _avgLeavesMap[cId] ?? 0.0;
+                      double rate =
+                          double.tryParse(_rateController.text) ?? 200.0;
+                      double estimatedMonthlyIncome = avgKilos * rate;
+                      double monthlyDeductionLimit =
+                          estimatedMonthlyIncome * (_deductionPercentage / 100);
+                      double loanAmount = (arrear['amount'] ?? 0).toDouble();
+                      String recoveryTime = _getRecoveryTime(
+                        loanAmount,
+                        monthlyDeductionLimit,
+                      );
 
-                          return Container(
-                            color: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      int actualRowNumber =
+                          ((_currentPage - 1) * _itemsPerPage) + index + 1;
+
+                      return Container(
+                        color: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 16,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
                               children: [
-                                Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 20,
-                                      backgroundColor: const Color(0xFFEFF6FF), 
-                                      child: Text(
-                                        '$actualRowNumber', 
-                                        style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w700, fontSize: 14)
-                                      ),
+                                CircleAvatar(
+                                  radius: 20,
+                                  backgroundColor: const Color(0xFFEFF6FF),
+                                  child: Text(
+                                    '$actualRowNumber',
+                                    style: const TextStyle(
+                                      color: Color(0xFF2563EB),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
                                     ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            arrear['name'] ?? 'Unknown', 
-                                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF111827))
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            'Ref: $cNum', 
-                                            style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w500)
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    Text(
-                                      'Rs. ${currencyF.format(loanAmount)}',
-                                      style: const TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.w800, fontSize: 16),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF9FAFB),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: const Color(0xFFF3F4F6)),
                                   ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      _buildMetric('Avg Leaves', '${weightF.format(avgKilos)} Kg', const Color(0xFF059669)),
-                                      Container(width: 1, height: 30, color: const Color(0xFFE5E7EB)),
-                                      _buildMetric('Credit Limit', 'Rs. ${currencyF.format(monthlyDeductionLimit)}', const Color(0xFF2563EB)),
-                                      Container(width: 1, height: 30, color: const Color(0xFFE5E7EB)),
-                                      _buildMetric('Recovery Time', recoveryTime, const Color(0xFFD97706)),
+                                      Text(
+                                        arrear['name'] ?? 'Unknown',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 16,
+                                          color: Color(0xFF111827),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Ref: $cNum',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Color(0xFF6B7280),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
                                     ],
+                                  ),
+                                ),
+                                Text(
+                                  'Rs. ${currencyF.format(loanAmount)}',
+                                  style: const TextStyle(
+                                    color: Color(0xFFDC2626),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16,
                                   ),
                                 ),
                               ],
                             ),
-                          );
-                        },
-                      ),
+                            const SizedBox(height: 16),
+
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF9FAFB),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: const Color(0xFFF3F4F6),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
+                                children: [
+                                  _buildMetric(
+                                    'Avg Leaves',
+                                    '${weightF.format(avgKilos)} Kg',
+                                    const Color(0xFF059669),
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 30,
+                                    color: const Color(0xFFE5E7EB),
+                                  ),
+                                  _buildMetric(
+                                    'Credit Limit',
+                                    'Rs. ${currencyF.format(monthlyDeductionLimit)}',
+                                    const Color(0xFF2563EB),
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 30,
+                                    color: const Color(0xFFE5E7EB),
+                                  ),
+                                  _buildMetric(
+                                    'Recovery Time',
+                                    recoveryTime,
+                                    const Color(0xFFD97706),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
           ),
 
           // Pagination Controls
@@ -457,42 +625,74 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
                 children: [
                   Text(
                     'Showing ${((_currentPage - 1) * _itemsPerPage) + 1} to ${((_currentPage * _itemsPerPage) > _displayList.length) ? _displayList.length : (_currentPage * _itemsPerPage)} of ${_displayList.length}',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF6B7280),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   Row(
                     children: [
                       InkWell(
-                        onTap: _currentPage > 1 ? () => setState(() => _currentPage--) : null,
+                        onTap: _currentPage > 1
+                            ? () => setState(() => _currentPage--)
+                            : null,
                         borderRadius: BorderRadius.circular(6),
                         child: Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            border: Border.all(color: _currentPage > 1 ? const Color(0xFFD1D5DB) : Colors.transparent),
+                            border: Border.all(
+                              color: _currentPage > 1
+                                  ? const Color(0xFFD1D5DB)
+                                  : Colors.transparent,
+                            ),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Icon(Icons.chevron_left_rounded, size: 20, color: _currentPage > 1 ? const Color(0xFF374151) : const Color(0xFFD1D5DB)),
+                          child: Icon(
+                            Icons.chevron_left_rounded,
+                            size: 20,
+                            color: _currentPage > 1
+                                ? const Color(0xFF374151)
+                                : const Color(0xFFD1D5DB),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
                       Text(
                         'Page $_currentPage of $_totalPages',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF374151)),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF374151),
+                        ),
                       ),
                       const SizedBox(width: 16),
                       InkWell(
-                        onTap: _currentPage < _totalPages ? () => setState(() => _currentPage++) : null,
+                        onTap: _currentPage < _totalPages
+                            ? () => setState(() => _currentPage++)
+                            : null,
                         borderRadius: BorderRadius.circular(6),
                         child: Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            border: Border.all(color: _currentPage < _totalPages ? const Color(0xFFD1D5DB) : Colors.transparent),
+                            border: Border.all(
+                              color: _currentPage < _totalPages
+                                  ? const Color(0xFFD1D5DB)
+                                  : Colors.transparent,
+                            ),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Icon(Icons.chevron_right_rounded, size: 20, color: _currentPage < _totalPages ? const Color(0xFF374151) : const Color(0xFFD1D5DB)),
+                          child: Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: _currentPage < _totalPages
+                                ? const Color(0xFF374151)
+                                : const Color(0xFFD1D5DB),
+                          ),
                         ),
                       ),
                     ],
-                  )
+                  ),
                 ],
               ),
             ),
@@ -505,62 +705,24 @@ class _OutstandingListScreenState extends State<OutstandingListScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280), fontWeight: FontWeight.w600)),
-        const SizedBox(height: 4),
-        Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: valueColor)),
-      ],
-    );
-  }
-}
-
-class SkeletonBox extends StatefulWidget {
-  final double width;
-  final double height;
-  final double borderRadius;
-  final BoxShape shape;
-
-  const SkeletonBox({
-    Key? key,
-    required this.width,
-    required this.height,
-    this.borderRadius = 8,
-    this.shape = BoxShape.rectangle,
-  }) : super(key: key);
-
-  @override
-  State<SkeletonBox> createState() => _SkeletonBoxState();
-}
-
-class _SkeletonBoxState extends State<SkeletonBox> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<Color?> _colorAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000))..repeat(reverse: true);
-    _colorAnimation = ColorTween(begin: const Color(0xFFE5E7EB), end: const Color(0xFFF3F4F6)).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _colorAnimation,
-      builder: (context, child) => Container(
-        width: widget.width,
-        height: widget.height,
-        decoration: BoxDecoration(
-          color: _colorAnimation.value,
-          borderRadius: widget.shape == BoxShape.circle ? null : BorderRadius.circular(widget.borderRadius),
-          shape: widget.shape,
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            color: Color(0xFF6B7280),
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: valueColor,
+          ),
+        ),
+      ],
     );
   }
 }

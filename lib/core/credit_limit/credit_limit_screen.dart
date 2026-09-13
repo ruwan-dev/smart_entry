@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../widgets/skeleton_box.dart';
 import '../../services/credit_limit_service.dart';
 
 class CreditLimitScreen extends StatefulWidget {
@@ -60,6 +62,35 @@ class _CreditLimitScreenState extends State<CreditLimitScreen> {
     return monthlyDeductionCapacity * 12; 
   }
 
+  Widget _buildSkeleton() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: 5,
+      itemBuilder: (context, index) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: [
+              const SkeletonBox(width: 40, height: 40, shape: BoxShape.circle),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    SkeletonBox(width: 150, height: 16),
+                    SizedBox(height: 8),
+                    SkeletonBox(width: 100, height: 12),
+                  ],
+                ),
+              ),
+              const SkeletonBox(width: 60, height: 24),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -68,7 +99,7 @@ class _CreditLimitScreenState extends State<CreditLimitScreen> {
         backgroundColor: Colors.teal,
       ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
+        ? _buildSkeleton()
         : SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(

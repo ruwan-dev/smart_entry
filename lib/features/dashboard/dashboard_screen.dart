@@ -3,11 +3,11 @@ import 'package:flutter/services.dart'; // Status bar වර්ණය වෙන�
 import 'package:smart_entry/core/customer/customer_form_screen.dart';
 import 'package:smart_entry/core/entries/daily_entries_screen.dart';
 
-import '../settings/settings_screen.dart'; 
-import 'overview_screen.dart'; 
-import '../reports/reports_screen.dart'; 
+import '../settings/settings_screen.dart';
+import 'overview_screen.dart';
+import '../reports/reports_screen.dart';
 
-import '../../core/network_service.dart'; 
+import '../../core/network_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -17,18 +17,18 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  int _selectedIndex = 0; 
+  int _selectedIndex = 0;
 
+  // All 5 screens always alive in IndexedStack
   final List<Widget> _screens = [
-    const OverviewScreen(),     // 0. Overview
+    const OverviewScreen(), // 0. Overview
     const CustomerFormScreen(), // 1. Customers
     const DailyEntriesScreen(), // 2. Daily Entries
-    const ReportsScreen(),      // 3. Reports (PDF)
-    const SettingsScreen(),     // 4. Settings
+    const ReportsScreen(), // 3. Reports (PDF)
+    const SettingsScreen(), // 4. Settings
   ];
 
-  // App එකේ ප්‍රධාන Theme එක නිල් (Blue)
-  final Color primaryAppColor = const Color(0xFF1976D2); 
+  final Color primaryAppColor = const Color(0xFF1976D2);
 
   void _onItemTapped(int index) {
     setState(() {
@@ -38,25 +38,88 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isMobile = screenWidth < 600;
+
+    // On mobile: only tabs 0, 1, 2 (Overview, Customers, Entries) are shown.
+    // Reports (3) and Settings (4) are hidden from the nav bar.
+    // If the current index is 3 or 4 and we switch to mobile, clamp to 0.
+    if (isMobile && _selectedIndex > 2) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() => _selectedIndex = 0);
+      });
+    }
+
+    // Mobile nav items (3)
+    const mobileItems = [
+      BottomNavigationBarItem(
+        activeIcon: Icon(Icons.dashboard_rounded, size: 28),
+        icon: Icon(Icons.dashboard_outlined, size: 24),
+        label: 'Overview',
+      ),
+      BottomNavigationBarItem(
+        activeIcon: Icon(Icons.people_alt_rounded, size: 28),
+        icon: Icon(Icons.people_alt_outlined, size: 24),
+        label: 'Customers',
+      ),
+      BottomNavigationBarItem(
+        activeIcon: Icon(Icons.edit_document, size: 28),
+        icon: Icon(Icons.edit_document, size: 24),
+        label: 'Entries',
+      ),
+    ];
+
+    // Desktop nav items (5)
+    const desktopItems = [
+      BottomNavigationBarItem(
+        activeIcon: Icon(Icons.dashboard_rounded, size: 28),
+        icon: Icon(Icons.dashboard_outlined, size: 24),
+        label: 'Overview',
+      ),
+      BottomNavigationBarItem(
+        activeIcon: Icon(Icons.people_alt_rounded, size: 28),
+        icon: Icon(Icons.people_alt_outlined, size: 24),
+        label: 'Customers',
+      ),
+      BottomNavigationBarItem(
+        activeIcon: Icon(Icons.edit_document, size: 28),
+        icon: Icon(Icons.edit_document, size: 24),
+        label: 'Entries',
+      ),
+      BottomNavigationBarItem(
+        activeIcon: Icon(Icons.analytics_rounded, size: 28),
+        icon: Icon(Icons.analytics_outlined, size: 24),
+        label: 'Reports',
+      ),
+      BottomNavigationBarItem(
+        activeIcon: Icon(Icons.settings_rounded, size: 28),
+        icon: Icon(Icons.settings_outlined, size: 24),
+        label: 'Settings',
+      ),
+    ];
+
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        // දුරකථනයේ ඉහළම තීරුව (Status Bar) නිල් පැහැ ගැන්වීම
+        toolbarHeight: 40,
         systemOverlayStyle: SystemUiOverlayStyle(
           statusBarColor: primaryAppColor,
-          statusBarIconBrightness: Brightness.light, 
+          statusBarIconBrightness: Brightness.light,
         ),
         elevation: 0,
         centerTitle: false,
-        backgroundColor: primaryAppColor, // AppBar හි ප්‍රධාන වර්ණය නිල් (Blue)
-        foregroundColor: Colors.white,    // අකුරු වල වර්ණය සුදු
+        backgroundColor: primaryAppColor,
+        foregroundColor: Colors.white,
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Smart Entry', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-            
+            const Text(
+              'Smart Entry',
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+            ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(20),
@@ -74,7 +137,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: isOnline ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA),
+                          color: isOnline
+                              ? const Color(0xFFA7F3D0)
+                              : const Color(0xFFFECACA),
                         ),
                       ),
                     ],
@@ -85,7 +150,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
       ),
-      body: _screens[_selectedIndex],
+      body: IndexedStack(index: _selectedIndex, children: _screens),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
@@ -93,47 +158,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
               color: Colors.black.withOpacity(0.05),
               blurRadius: 20,
               offset: const Offset(0, -5),
-            )
-          ]
+            ),
+          ],
         ),
         child: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed, 
-          currentIndex: _selectedIndex,
+          type: BottomNavigationBarType.fixed,
+          currentIndex: isMobile ? _selectedIndex.clamp(0, 2) : _selectedIndex,
           onTap: _onItemTapped,
           backgroundColor: Colors.white,
           elevation: 0,
-          selectedItemColor: primaryAppColor, // Active Icon එකේ වර්ණය නිල්
-          unselectedItemColor: Colors.blueGrey.shade300, 
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 10),
+          selectedItemColor: primaryAppColor,
+          unselectedItemColor: Colors.blueGrey.shade300,
+          selectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 11,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 10,
+          ),
           showUnselectedLabels: true,
-          items: const [
-            BottomNavigationBarItem(
-              activeIcon: Icon(Icons.dashboard_rounded, size: 28),
-              icon: Icon(Icons.dashboard_outlined, size: 24), 
-              label: 'Overview',
-            ),
-            BottomNavigationBarItem(
-              activeIcon: Icon(Icons.people_alt_rounded, size: 28),
-              icon: Icon(Icons.people_alt_outlined, size: 24),
-              label: 'Customers',
-            ),
-            BottomNavigationBarItem(
-              activeIcon: Icon(Icons.edit_document, size: 28),
-              icon: Icon(Icons.edit_document, size: 24),
-              label: 'Entries',
-            ),
-            BottomNavigationBarItem(
-              activeIcon: Icon(Icons.picture_as_pdf_rounded, size: 28),
-              icon: Icon(Icons.picture_as_pdf_outlined, size: 24),
-              label: 'Reports',
-            ),
-            BottomNavigationBarItem(
-              activeIcon: Icon(Icons.settings_rounded, size: 28),
-              icon: Icon(Icons.settings_outlined, size: 24),
-              label: 'Settings',
-            ),
-          ],
+          items: isMobile ? mobileItems : desktopItems,
         ),
       ),
     );
@@ -148,7 +193,8 @@ class _StatusDot extends StatefulWidget {
   State<_StatusDot> createState() => _StatusDotState();
 }
 
-class _StatusDotState extends State<_StatusDot> with SingleTickerProviderStateMixin {
+class _StatusDotState extends State<_StatusDot>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override
@@ -156,8 +202,8 @@ class _StatusDotState extends State<_StatusDot> with SingleTickerProviderStateMi
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2000), 
-    )..repeat(); 
+      duration: const Duration(milliseconds: 2000),
+    )..repeat();
   }
 
   @override
@@ -168,13 +214,15 @@ class _StatusDotState extends State<_StatusDot> with SingleTickerProviderStateMi
 
   @override
   Widget build(BuildContext context) {
-    Color statusColor = widget.isOnline ? const Color(0xFF34D399) : const Color(0xFFF87171);
+    Color statusColor = widget.isOnline
+        ? const Color(0xFF34D399)
+        : const Color(0xFFF87171);
 
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
         return SizedBox(
-          width: 14, 
+          width: 14,
           height: 14,
           child: Stack(
             alignment: Alignment.center,
@@ -197,7 +245,10 @@ class _StatusDotState extends State<_StatusDot> with SingleTickerProviderStateMi
                   shape: BoxShape.circle,
                   color: statusColor,
                   boxShadow: [
-                    BoxShadow(color: statusColor.withOpacity(0.4), blurRadius: 3),
+                    BoxShadow(
+                      color: statusColor.withOpacity(0.4),
+                      blurRadius: 3,
+                    ),
                   ],
                 ),
               ),

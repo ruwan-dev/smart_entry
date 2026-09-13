@@ -17,7 +17,7 @@ void main() async {
     List<String> collections = ['GlobalSettings', 'Customers', 'DailyEntries', 'MonthlyRates', 'MonthlySummaries'];
     
     for (String col in collections) {
-      print("Fetching \$col...");
+      print("Fetching $col...");
       var snapshot = await FirebaseFirestore.instance.collection(col).get();
       fullBackupData[col] = snapshot.docs.map((doc) {
         var data = doc.data();
@@ -29,9 +29,9 @@ void main() async {
     String jsonString = const JsonEncoder.withIndent('  ').convert(fullBackupData);
     File file = File('C:\\Users\\RuwanPathirana\\SmartEntry\\firebase_backup.json');
     await file.writeAsString(jsonString);
-    print("BACKUP_SUCCESS: \${file.path}");
+    print("BACKUP_SUCCESS: ${file.path}");
   } catch (e) {
-    print("BACKUP_ERROR: \$e");
+    print("BACKUP_ERROR: $e");
   }
   exit(0);
 }
@@ -50,3 +50,4 @@ dynamic _sanitizeDataForJson(dynamic data) {
   }
   return data;
 }
+
