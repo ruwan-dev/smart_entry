@@ -1,4 +1,4 @@
-﻿# Miscellaneous
+# Miscellaneous
 *.class
 *.log
 *.pyc
@@ -48,3 +48,5 @@ whatsapp_server/node_modules/
 whatsapp_server/.wwebjs_auth/
 whatsapp_server/
 
+*.zip
+temp_zip_test/

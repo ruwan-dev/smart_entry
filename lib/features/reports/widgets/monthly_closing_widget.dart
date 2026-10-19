@@ -52,6 +52,52 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
     super.dispose();
   }
 
+  int _extractBillPeriodKey(Map<String, dynamic> bill) {
+    var bData = bill['billData'];
+    if (bData is Map && bData['displayMonth'] != null) {
+      String dm = bData['displayMonth'].toString().trim();
+      var parts = dm.split(RegExp(r'\s+'));
+      if (parts.length >= 2) {
+        int? y = int.tryParse(parts[0]);
+        int? m = _monthNameToNumber(parts[1]);
+        if (y != null && m != null) {
+          return y * 100 + m;
+        }
+      }
+    }
+    String billId = bill['id']?.toString() ?? '';
+    var parts = billId.split('_');
+    if (parts.length >= 2) {
+      var dateParts = parts.last.split('-');
+      if (dateParts.length >= 2) {
+        int? y = int.tryParse(dateParts[0]);
+        int? m = _monthNameToNumber(dateParts[1]);
+        if (y != null && m != null) {
+          return y * 100 + m;
+        }
+      }
+    }
+    return 0;
+  }
+
+  int? _monthNameToNumber(String name) {
+    const monthNames = {
+      'january': 1,
+      'february': 2,
+      'march': 3,
+      'april': 4,
+      'may': 5,
+      'june': 6,
+      'july': 7,
+      'august': 8,
+      'september': 9,
+      'october': 10,
+      'november': 11,
+      'december': 12,
+    };
+    return monthNames[name.toLowerCase().trim()];
+  }
+
   // ===========================================================================
   // 🚀 FAST LOADING LOGIC (සමාන්තරව දත්ත ලබාගැනීම)
   // ===========================================================================
@@ -72,17 +118,6 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
       ).format(DateTime(_currentYear, _selectedMonth));
       String displayMonth = "$_currentYear $monthName";
       String ratesDocId = "$_currentYear-$monthName";
-
-      int prevMonth = _selectedMonth - 1;
-      int prevYear = _currentYear;
-      if (prevMonth == 0) {
-        prevMonth = 12;
-        prevYear = _currentYear - 1;
-      }
-      String prevMonthName = DateFormat(
-        'MMMM',
-      ).format(DateTime(prevYear, prevMonth));
-      String prevMonthKey = "$prevYear-$prevMonthName";
 
       var ratesDoc = await Supabase.instance.client
           .from('monthly_rates')
@@ -143,20 +178,39 @@ class _MonthlyClosingWidgetState extends State<MonthlyClosingWidget> {
         groupedEntries[cId]!.add(doc);
       }
 
-      var prevBillFutures = customers
-          .map(
-            (customer) => Supabase.instance.client
-                .from('finalized_bills')
-                .select()
-                .eq('id', "${customer['id']}_$prevMonthKey")
-                .maybeSingle(),
-          )
-          .toList();
-      var prevBillDocs = await Future.wait(prevBillFutures);
+      int currentPeriodKey = _currentYear * 100 + _selectedMonth;
 
-      Map<String, Map<String, dynamic>?> prevBillsMap = {};
-      for (int i = 0; i < customers.length; i++) {
-        prevBillsMap[customers[i]['id']] = prevBillDocs[i];
+      // Batch fetch all finalized bills across customers
+      List<dynamic> allPastBills = [];
+      int bOffset = 0;
+      int bLimit = 1000;
+      while (true) {
+        var chunk = await Supabase.instance.client
+            .from('finalized_bills')
+            .select('id, customerId, billData, finalizedAt')
+            .range(bOffset, bOffset + bLimit - 1);
+        allPastBills.addAll(chunk);
+        if (chunk.length < bLimit) break;
+        bOffset += bLimit;
+      }
+
+      // Map each customer to their most recent finalized bill prior to current month
+      Map<String, Map<String, dynamic>> prevBillsMap = {};
+      Map<String, int> latestPeriodMap = {};
+
+      for (var bill in allPastBills) {
+        String cId = bill['customerId']?.toString() ?? '';
+        if (cId.isEmpty) continue;
+
+        int billPeriodKey = _extractBillPeriodKey(bill);
+        // Only consider bills strictly before the current month
+        if (billPeriodKey > 0 && billPeriodKey < currentPeriodKey) {
+          int existingLatest = latestPeriodMap[cId] ?? 0;
+          if (billPeriodKey > existingLatest) {
+            latestPeriodMap[cId] = billPeriodKey;
+            prevBillsMap[cId] = bill;
+          }
+        }
       }
 
       List<Map<String, dynamic>> results = [];
